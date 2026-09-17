@@ -1,0 +1,1 @@
+{"version":3,"file":"color-over-lifetime.js","sourceRoot":"","sources":["../../src/mappers/color-over-lifetime.ts"],"names":[],"mappings":"AAAA,YAAY,CAAC;;AAKb,oDAIC;AAND,oEAA8D;AAE9D,SAAgB,oBAAoB,CAAC,IAAyB,EAAE,GAAkB;IAC9E,OAAO;QACH,KAAK,EAAE,IAAA,oCAAe,EAAC,IAAI,CAAC,OAAO,CAAC,CAAC;KACxC,CAAC;AACN,CAAC"}

@@ -1,0 +1,16 @@
+{
+  "__version__": "1.0.6",
+  "general": {
+    "designResolution": {
+      "fitHeight": true,
+      "fitWidth": false,
+      "width": 1080,
+      "height": 1920
+    }
+  },
+  "physics": {
+    "gravity": {
+      "y": 10
+    }
+  }
+}
