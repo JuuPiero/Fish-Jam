@@ -12,7 +12,11 @@ export class OrderManager extends Component {
 
     @property({type: [Order], readonly: true}) orders: Order[] = []
 
-    // Fish ids still waiting to become an order, once a visible slot frees up.
+    // Match-3: an order is fulfilled by delivering this many fish of the same id (matches the
+    // number of placeholder slots on the Order prefab).
+    private static readonly FISH_PER_ORDER = 3;
+
+    // Order ids still waiting for a visible slot to free up.
     private _queue: number[] = [];
 
     initialize(levelData: LevelData) {
@@ -24,22 +28,45 @@ export class OrderManager extends Component {
 
         const orderPrefab = ServiceLocator.get(GameConfigSA).orderPrefab;
 
-        // No order curve yet - just take the fish ids in the order/quantity they appear
-        // across the level's bubbles and hand them out to the visible order slots in sequence.
         const fishIds: number[] = [];
         for (const bubble of levelData.bubbles) {
             fishIds.push(...bubble.fishes);
         }
-        this._queue = fishIds.slice(this.count);
+
+        // No order curve yet - group the level's fish into one order per every 3 of the same
+        // id, in the sequence each id first shows up. The previous version generated one order
+        // PER FISH instead of per group of 3, so the same id could get queued up again after its
+        // only 3 fish were already used, leaving a permanently unfulfillable order.
+        const remainingCount = new Map<number, number>();
+        for (const id of fishIds) {
+            remainingCount.set(id, (remainingCount.get(id) ?? 0) + 1);
+        }
+        const orderIds: number[] = [];
+        const seen = new Set<number>();
+        for (const id of fishIds) {
+            if (seen.has(id)) {
+                continue;
+            }
+            seen.add(id);
+            const ordersForId = Math.floor((remainingCount.get(id) ?? 0) / OrderManager.FISH_PER_ORDER);
+            for (let i = 0; i < ordersForId; i++) {
+                orderIds.push(id);
+            }
+        }
+        // Never wrap around to reuse an id for two visible slots at once - a level with fewer
+        // distinct orders than `count` just shows fewer of them, rather than creating two
+        // orders asking for the same id when there are only 3 fish of it in the whole level.
+        const visibleCount = Math.min(this.count, orderIds.length);
+        this._queue = orderIds.slice(visibleCount);
 
         const startX = -(this.count - 1) * this.spacing * 0.5;
-        for (let i = 0; i < this.count; i++) {
+        for (let i = 0; i < visibleCount; i++) {
             const orderNode = instantiate(orderPrefab);
             orderNode.setParent(this.node);
             orderNode.setPosition(startX + i * this.spacing, 0, 0);
 
             const order = orderNode.getComponent(Order);
-            order.initialize(fishIds[i % fishIds.length]);
+            order.initialize(orderIds[i]);
             this.orders.push(order);
         }
     }

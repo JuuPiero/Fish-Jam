@@ -3,6 +3,7 @@ import { BubbleData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Fish } from '../Fish/Fish';
+import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
 const { ccclass, property } = _decorator;
 
 @ccclass('Bubble')
@@ -126,7 +127,7 @@ export class Bubble extends Component {
     private pop() {
         this._bounceTween?.stop();
         this._wobbleTween?.stop();
-
+        AudioManager.instance.playOneShot('Pop')
         if (this._collider) {
             this._collider.enabled = false;
         }

@@ -85,8 +85,14 @@ export class GameManager extends Component {
                 if (nextId === null) {
                     return;
                 }
-                const waitingFish = slotManager.takeMatching(nextId);
-                if (waitingFish) {
+                // Pull every fish already waiting on the bench for this id, not just one - the
+                // order has room for up to 3, and a bench could easily be holding 2 or 3 of a
+                // kind that only just became orderable.
+                while (!order.isFullyClaimed) {
+                    const waitingFish = slotManager.takeMatching(nextId);
+                    if (!waitingFish) {
+                        break;
+                    }
                     this.routeFish(waitingFish);
                 }
             });

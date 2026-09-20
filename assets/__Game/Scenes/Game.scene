@@ -2127,7 +2127,7 @@
         "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 0,
+    "levelIndex": 1,
     "currentLevel": null,
     "orderManager": {
       "__id__": 45
@@ -2241,7 +2241,12 @@
     "_enabled": true,
     "__prefab": null,
     "audioPrefab": null,
-    "audios": [],
+    "audios": [
+      {
+        "__uuid__": "9f878b6a-cab4-4e79-919c-5daa14eef448",
+        "__expectedType__": "cc.AudioClip"
+      }
+    ],
     "poolSize": 10,
     "masterVolume": 1,
     "musicVolume": 1,
