@@ -13,7 +13,7 @@ export class LevelData {
 
     static Parse(jsonAsset: JsonAsset): LevelData {
         const levelData = new LevelData();
-        
+
         if (!jsonAsset || !jsonAsset.json) {
             console.warn("JsonAsset is null or empty!");
             return levelData;
@@ -25,12 +25,19 @@ export class LevelData {
             levelData.bubbles = rawData.bubbles.map(rawBubble => {
                 const bubbleData = new BubbleData();
                 if (rawBubble.fishes && Array.isArray(rawBubble.fishes)) {
-                    bubbleData.fishes = [...rawBubble.fishes]; 
+                    bubbleData.fishes = [...rawBubble.fishes];
                 }
                 return bubbleData;
             });
         }
 
         return levelData;
+    }
+
+    getTotalFishes(): number {
+        return this.bubbles.reduce((total, bubble) => {
+            // Cộng dồn độ dài của mảng fishes trong từng bubble
+            return total + (bubble.fishes ? bubble.fishes.length : 0);
+        }, 0);
     }
 }

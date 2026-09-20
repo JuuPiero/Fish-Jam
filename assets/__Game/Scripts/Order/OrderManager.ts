@@ -3,6 +3,8 @@ import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Order } from './Order';
 import { LevelData } from '../Data/LevelData';
+import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
+import { GameEvents } from '../GameEvents';
 const { ccclass, property } = _decorator;
 
 @ccclass('OrderManager')
@@ -92,6 +94,7 @@ export class OrderManager extends Component {
             order.node.destroy();
             return null;
         }
+        EventBus.emit(GameEvents.MATCHED);
 
         order.reset(nextId);
         return nextId;
