@@ -9,6 +9,8 @@ export class GameConfigSA extends bh.ScriptableAsset {
     @property(Prefab) bubblePrefab: Prefab = null;
     @property(Prefab) fishPrefab: Prefab = null;
 
+    @property(Prefab) orderPrefab: Prefab = null;
+    @property(Prefab) slotPrefab: Prefab = null;
 }
 
 

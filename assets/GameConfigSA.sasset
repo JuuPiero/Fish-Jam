@@ -1,0 +1,20 @@
+{
+  "__type__": "2198491PBlBaofrqgRE+5vr",
+  "_name": "GameConfigSA",
+  "_objFlags": 0,
+  "__editorExtras__": {},
+  "_native": "",
+  "bubblePrefab": {
+    "__uuid__": "e090e473-efe9-4d8f-bdb5-35d4953688da",
+    "__expectedType__": "cc.Prefab"
+  },
+  "fishPrefab": {
+    "__uuid__": "b6597868-02d7-4cde-a190-0e37c3c754ae",
+    "__expectedType__": "cc.Prefab"
+  },
+  "orderPrefab": null,
+  "slotPrefab": {
+    "__uuid__": "6422aa2e-0ca8-47a4-89de-405880d4b86e",
+    "__expectedType__": "cc.Prefab"
+  }
+}

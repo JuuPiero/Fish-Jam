@@ -1,13 +1,36 @@
-import { _decorator, Component, Node } from 'cc';
+import { _decorator, Component, JsonAsset, Node } from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('BubbleData')
 export class BubbleData {
-    @property fishes: number[] = [];
+    @property({ type: [Number] }) fishes: number[] = [];
 }
-
 
 @ccclass('LevelData')
 export class LevelData {
-    // @property()
+    @property({ type: [BubbleData] })
+    bubbles: BubbleData[] = [];
+
+    static Parse(jsonAsset: JsonAsset): LevelData {
+        const levelData = new LevelData();
+        
+        if (!jsonAsset || !jsonAsset.json) {
+            console.warn("JsonAsset is null or empty!");
+            return levelData;
+        }
+
+        const rawData: any = jsonAsset.json;
+
+        if (rawData.bubbles && Array.isArray(rawData.bubbles)) {
+            levelData.bubbles = rawData.bubbles.map(rawBubble => {
+                const bubbleData = new BubbleData();
+                if (rawBubble.fishes && Array.isArray(rawBubble.fishes)) {
+                    bubbleData.fishes = [...rawBubble.fishes]; 
+                }
+                return bubbleData;
+            });
+        }
+
+        return levelData;
+    }
 }

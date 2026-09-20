@@ -34,6 +34,7 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.LOADED)
         TrackingManager.TrackEvent(ETrackingEvent.DISPLAYED)
 
+        EventBus.emit(GameEvents.NEW_LEVEL);
     }
 
     onNewGame = () => {
