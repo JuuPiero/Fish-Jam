@@ -1391,8 +1391,9 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "spacing": 0,
+    "spacing": 280,
     "count": 4,
+    "orders": [],
     "_id": "132CoMdDNPAqMOlPtJMQAJ"
   },
   {
@@ -1623,7 +1624,7 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "spacing": 0,
+    "spacing": 200,
     "count": 5,
     "_id": "d3oBDQGNxHG4m2nrzG2J0b"
   },

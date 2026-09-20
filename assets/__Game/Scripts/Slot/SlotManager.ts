@@ -15,12 +15,12 @@ export class SlotManager extends Component {
 
         const slotPrefab = ServiceLocator.get(GameConfigSA).slotPrefab;
 
+        const startX = -(this.count - 1) * this.spacing * 0.5;
         for (let i = 0; i < this.count; i++) {
             const slotNode = instantiate(slotPrefab);
             slotNode.setParent(this.node);
-                        
+            slotNode.setPosition(startX + i * this.spacing, 0, 0);
         }
-
     }
 }
 

@@ -12,7 +12,10 @@
     "__uuid__": "b6597868-02d7-4cde-a190-0e37c3c754ae",
     "__expectedType__": "cc.Prefab"
   },
-  "orderPrefab": null,
+  "orderPrefab": {
+    "__uuid__": "277364f0-b747-425a-9416-3cbb45c39437",
+    "__expectedType__": "cc.Prefab"
+  },
   "slotPrefab": {
     "__uuid__": "6422aa2e-0ca8-47a4-89de-405880d4b86e",
     "__expectedType__": "cc.Prefab"

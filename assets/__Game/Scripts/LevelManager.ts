@@ -19,7 +19,7 @@ export class LevelManager extends Component {
         console.log(this.currentLevel);
         
         this.bubbleManager?.initialize(this.currentLevel);
-        this.orderManager?.initialize();
+        this.orderManager?.initialize(this.currentLevel);
         this.slotManager?.initialize();
     }
 
