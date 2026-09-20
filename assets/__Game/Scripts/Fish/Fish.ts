@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, Node, Sprite, UITransform } from 'cc';
+import { _decorator, Button, Component, math, Node, Sprite, UITransform } from 'cc';
 import { Order } from '../Order/Order';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
@@ -43,8 +43,9 @@ export class Fish extends Component {
     }
 
     getSize() {
-        return this.visual.getComponent(UITransform).contentSize;
-        // return this.visual.getComponent(Sprite).spriteFrame;
+        const size = this.visual.getComponent(UITransform).contentSize;
+        const scale = this.visual.scale;
+        return new math.Size(size.width * Math.abs(scale.x), size.height * Math.abs(scale.y));
     }
 }
 

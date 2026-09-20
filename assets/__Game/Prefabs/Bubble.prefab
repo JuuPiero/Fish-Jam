@@ -153,13 +153,13 @@
     "__prefab": {
       "__id__": 7
     },
-    "enabledContactListener": false,
+    "enabledContactListener": true,
     "bullet": false,
     "awakeOnLoad": true,
     "_group": 1,
     "_type": 2,
     "_allowSleep": true,
-    "_gravityScale": 1,
+    "_gravityScale": 4,
     "_linearDamping": 0,
     "_angularDamping": 0,
     "_linearVelocity": {
@@ -168,7 +168,7 @@
       "y": 0
     },
     "_angularVelocity": 0,
-    "_fixedRotation": false,
+    "_fixedRotation": true,
     "_id": ""
   },
   {
@@ -218,6 +218,7 @@
       "__id__": 11
     },
     "radius": 0,
+    "fishes": [],
     "_id": ""
   },
   {
