@@ -22,7 +22,7 @@ export class EventBus {
         const arr = this.events.get(event);
         if (!arr) return;
 
-        arr.forEach(cb => cb.apply(args));
+        arr.forEach(cb => cb(...args));
         console.log("Raise event: " + event);
     }
 }

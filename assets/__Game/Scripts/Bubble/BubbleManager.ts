@@ -29,8 +29,10 @@ export class BubbleManager extends Component {
         let y = spawnPos.y;
         let prevRadius = 0;
 
+        let index = 0;
         for (const bubbleData of levelData.bubbles) {
             const bubbleNode = instantiate(bubblePrefab);
+            bubbleNode.name = index.toString()
             bubbleNode.setParent(this.node);
             const bubble = bubbleNode.getComponent(Bubble);
             bubble.initiallize(bubbleData);
@@ -50,6 +52,7 @@ export class BubbleManager extends Component {
             const x = minX < maxX ? minX + Math.random() * (maxX - minX) : spawnPos.x;
 
             bubbleNode.setWorldPosition(x, y, spawnPos.z);
+            index++;
         }
     }
 }

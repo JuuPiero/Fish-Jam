@@ -191,7 +191,7 @@
     "_group": 1,
     "_density": 1,
     "_sensor": false,
-    "_friction": 0.2,
+    "_friction": 0,
     "_restitution": 0,
     "_offset": {
       "__type__": "cc.Vec2",
@@ -219,6 +219,9 @@
     },
     "radius": 0,
     "fishes": [],
+    "bounceSpeedThreshold": 5,
+    "buoyancyScale": 1.6,
+    "friction": 0,
     "_id": ""
   },
   {

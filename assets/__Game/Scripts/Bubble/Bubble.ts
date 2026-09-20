@@ -1,4 +1,4 @@
-import { _decorator, CircleCollider2D, Collider2D, Component, Contact2DType, ICollisionEvent, instantiate, IPhysics2DContact, Node, RigidBody2D, Size, UITransform, tween, Tween } from 'cc';
+import { _decorator, CircleCollider2D, Collider2D, Color, Component, Contact2DType, ICollisionEvent, instantiate, IPhysics2DContact, Node, RigidBody2D, Size, Sprite, UITransform, tween, Tween, Vec3 } from 'cc';
 import { BubbleData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
@@ -25,6 +25,17 @@ export class Bubble extends Component {
     @property({ tooltip: 'Minimum speed (units/s) a bubble must have on contact to play the bounce effect' })
     bounceSpeedThreshold: number = 40;
 
+    // A wall of circles all pushed the same way by a constant force can still wedge into a
+    // stable arch and stop moving well before reaching the top - classic granular jamming.
+    // Multiplying gravity's effect on the bubble (instead of just relying on the project's
+    // global gravity value) and cutting contact friction both make that arch much less stable,
+    // so a stuck bubble is far more likely to keep getting nudged upward instead of freezing.
+    @property({ tooltip: "Multiplies the global gravity's pull on this bubble - higher pushes it toward the top harder, helping it break out of jams against neighbors" })
+    buoyancyScale: number = 1.6;
+
+    @property({ tooltip: 'Contact friction against other bubbles/borders - kept low so bubbles slide past each other instead of locking into a stuck arch' })
+    friction: number = 0.02;
+
     private _rigidBody: RigidBody2D | null = null;
     private _bounceTween: Tween<UITransform> | null = null;
     private _wobbleTween: Tween<Node> | null = null;
@@ -33,6 +44,10 @@ export class Bubble extends Component {
         this._uiTransform = this.getComponent(UITransform);
         this._collider = this.getComponent(CircleCollider2D);
         this._rigidBody = this.getComponent(RigidBody2D);
+        this._collider.friction = this.friction;
+        if (this._rigidBody) {
+            this._rigidBody.gravityScale = this.buoyancyScale;
+        }
         this._collider.on(Contact2DType.BEGIN_CONTACT, this.onCollisionEnter, this);
     }
     protected start(): void {
@@ -84,6 +99,54 @@ export class Bubble extends Component {
             const angle = angleStep * index;
             fish.node.setPosition(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0);
         });
+    }
+
+    // Called when a fish inside this bubble gets clicked and flies off. Detaches it from the
+    // bubble node BEFORE possibly destroying the (now-empty) bubble, so the fish survives to
+    // keep flying to wherever it's headed next.
+    removeFish(fish: Fish) {
+        const index = this.fishes.indexOf(fish);
+        if (index === -1) {
+            return;
+        }
+        this.fishes.splice(index, 1);
+        // keepWorldTransform=true - otherwise the fish's bubble-relative local position gets
+        // reinterpreted as an absolute one the instant it has no parent, snapping it elsewhere
+        // right before it starts flying.
+        fish.node.setParent(null, true);
+
+        if (this.fishes.length === 0) {
+            this.pop();
+        }
+    }
+
+    // Satisfying "burst" once the last fish leaves: a quick anticipation squeeze, then a fast
+    // scale-up while fading out, like a real bubble popping. Physics is switched off right away
+    // so the popping bubble stops pushing/getting pushed by its neighbors.
+    private pop() {
+        this._bounceTween?.stop();
+        this._wobbleTween?.stop();
+
+        if (this._collider) {
+            this._collider.enabled = false;
+        }
+        if (this._rigidBody) {
+            this._rigidBody.enabled = false;
+        }
+
+        tween(this.node)
+            .to(0.05, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadOut' })
+            .to(0.18, { scale: new Vec3(1.5, 1.5, 1) }, { easing: 'quadOut' })
+            .call(() => this.node.destroy())
+            .start();
+
+        const sprite = this.getComponent(Sprite);
+        if (sprite) {
+            tween(sprite)
+                .delay(0.05)
+                .to(0.18, { color: new Color(255, 255, 255, 0) }, { easing: 'quadOut' })
+                .start();
+        }
     }
 
     initiallize(data: BubbleData) {
