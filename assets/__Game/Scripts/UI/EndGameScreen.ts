@@ -11,16 +11,14 @@ const { ccclass, property } = _decorator;
 @ccclass('EndGameScreen')
 export class EndGameScreen extends ScreenBase {
 
-    @property(Button)
-    downloadBtn: Button = null;
+    // @property(Button)
+    // downloadBtn: Button = null;
 
     // @property(Button)
     // retryBtn: Button = null;
 
     @property(Node)
     logo: Node = null;
-
-   
 
     // public async enter(param?: { isWin, firstLose }): Promise<void> {
     //     super.enter(param);

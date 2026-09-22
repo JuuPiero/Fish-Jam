@@ -4,6 +4,7 @@ import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Fish } from '../Fish/Fish';
 import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
+import { VFXManager } from '../VFXManager';
 const { ccclass, property } = _decorator;
 
 @ccclass('Bubble')
@@ -147,6 +148,9 @@ export class Bubble extends Component {
         fish.node.setParent(null, true);
 
         if (this.fishes.length === 0) {
+            // const effect = instantiate(VFXManager.instance.bubbleEffect);
+            // effect.setParent(this.node);
+            // effect.setPosition(0, 0, 0);
             this.pop();
         }
     }
@@ -159,6 +163,9 @@ export class Bubble extends Component {
         this.stopIdleBounce();
         this._wobbleTween?.stop();
         AudioManager.instance.playOneShot('Pop')
+      
+
+
         if (this._collider) {
             this._collider.enabled = false;
         }
@@ -166,10 +173,13 @@ export class Bubble extends Component {
             this._rigidBody.enabled = false;
         }
 
-        tween(this.node)
+        tween(this.visual)
             .to(0.05, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadOut' })
             .to(0.18, { scale: new Vec3(1.5, 1.5, 1) }, { easing: 'quadOut' })
-            .call(() => this.node.destroy())
+            .call(() => {
+                // effect.destroy()
+                this.node.destroy()
+            })
             .start();
 
         const sprite = this.visual.getComponent(Sprite);

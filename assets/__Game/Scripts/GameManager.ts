@@ -123,7 +123,14 @@ export class GameManager extends Component {
 
         // Detach from its bubble first (this may pop the bubble if it was the last fish in it)
         // so the fish is free to fly off wherever it ends up going.
-        const bubble = fish.node.parent?.getComponent(Bubble);
+        // Fish now live under Bubble.bubbleContainer, so the Bubble component is no longer on
+        // their direct parent. Walk upward to find the owning bubble before detaching the fish.
+        let bubble: Bubble | null = null;
+        let parent: Node | null = fish.node.parent;
+        while (parent && !bubble) {
+            bubble = parent.getComponent(Bubble);
+            parent = parent.parent;
+        }
         bubble?.removeFish(fish);
 
         this.routeFish(fish);

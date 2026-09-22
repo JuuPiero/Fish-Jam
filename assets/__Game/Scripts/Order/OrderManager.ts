@@ -65,7 +65,7 @@ export class OrderManager extends Component {
         const startX = -(this.count - 1) * this.spacing * 0.5;
         for (let i = 0; i < visibleCount; i++) {
             const orderNode = instantiate(orderPrefab);
-            orderNode.setParent(this.node);
+            orderNode.setParent(this.orderContainer);
             orderNode.setPosition(startX + i * this.spacing, 0, 0);
 
             const order = orderNode.getComponent(Order);
