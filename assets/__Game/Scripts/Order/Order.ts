@@ -1,4 +1,4 @@
-import { _decorator, Color, Component, Node, Sprite } from 'cc';
+import { _decorator, Color, Component, Node, sp, Sprite } from 'cc';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
 const { ccclass, property } = _decorator;
@@ -10,12 +10,15 @@ const EMPTY_SLOT_COLOR = new Color(255, 255, 255, 150);
 export class Order extends Component {
     @property({readonly: true}) id: number = -1;
     @property(Node) slotsPos: Node[] = []
+    @property(Node) lidPos: Node = null;
+
 
     // Claimed = already promised to a fish that's mid-flight here; delivered = that fish has
     // actually landed. Split in two so a second fish of the same type can't ALSO get sent to
     // this order while the first is still ~0.4s from landing on the last open slot.
     private _claimedCount = 0;
     private _deliveredCount = 0;
+
 
     get isComplete(): boolean {
         return this._deliveredCount >= this.slotsPos.length;
@@ -36,9 +39,10 @@ export class Order extends Component {
         this._claimedCount = 0;
         this._deliveredCount = 0;
         this.slotsPos.forEach(slotNode => {
-            const sprite = slotNode.getComponent(Sprite);
-            sprite.spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
-            sprite.color = EMPTY_SLOT_COLOR;
+            const skeleton = slotNode.getComponent(sp.Skeleton);
+            skeleton.setSkin(ServiceLocator.get(FishConfigSA).fishes[id])
+            // sprite.spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
+            skeleton.color = EMPTY_SLOT_COLOR;
         })
     }
 
@@ -54,7 +58,7 @@ export class Order extends Component {
     // Marks a previously-claimed slot as delivered once its fish actually lands, and reports
     // whether the order is now fully complete.
     fillSlot(slotNode: Node): boolean {
-        slotNode.getComponent(Sprite).color = Color.WHITE;
+        slotNode.getComponent(sp.Skeleton).color = Color.WHITE;
         this._deliveredCount++;
         return this.isComplete;
     }

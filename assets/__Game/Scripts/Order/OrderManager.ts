@@ -9,6 +9,7 @@ const { ccclass, property } = _decorator;
 
 @ccclass('OrderManager')
 export class OrderManager extends Component {
+    @property(Node) orderContainer: Node = null;
     @property spacing: number = 0;
     @property count: number = 4;
 
@@ -22,7 +23,7 @@ export class OrderManager extends Component {
     private _queue: number[] = [];
 
     initialize(levelData: LevelData) {
-        for (const child of this.node.children.slice()) {
+        for (const child of this.orderContainer.children.slice()) {
             child.removeFromParent();
             child.destroy();
         }

@@ -1,0 +1,139 @@
+CCEffect %{
+  temporaries:
+    b1: &b1
+      targets:
+      - blend: true
+        blendSrc: src_alpha
+        blendDst: one
+        blendSrcAlpha: src_alpha
+        blendDstAlpha: one
+    b2: &b2
+      targets:
+      - blend: true
+        blendSrc: one
+        blendDst: one_minus_src_alpha
+        blendSrcAlpha: zero
+        blendDstAlpha: one
+        blendAlphaEq: max
+    b3: &b3
+      targets:
+      - blend: true
+        blendSrc: dst_color
+        blendDst: one
+        blendSrcAlpha: zero
+        blendDstAlpha: dst_alpha
+    d1: &d1 { depthTest: true, depthWrite: false }
+    r1: &r1 { cullMode: none }
+    p1: &p1
+      mainTexture:              { value: grey }
+      mainTiling_Offset:        { value: [1, 1, 0, 0] }
+      noiseTexture:             { value: white }
+      maskTexture:              { value: white }
+      flowTexture:              { value: grey }
+      tintColor:                { value: [1, 1, 1, 1], editor: { type: color } }
+      emissionScale:            { value: [1, 0, 0, 0] }
+      speedMainTexUVNoiseZW:    { value: [0, 0, 0, 0] }
+      distortSpeedXYPowerZW:    { value: [0, 0, 0, 0] }
+
+  techniques:
+  - name: add
+    passes:
+    - vert: builtin/internal/particle-vs-legacy:lpvs_main
+      frag: ikame-particle-fs:add
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b1
+      properties: *p1
+  - name: alpha-blend
+    passes:
+    - vert: builtin/internal/particle-vs-legacy:lpvs_main
+      frag: ikame-particle-fs:alphaBlend
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b2
+      properties: *p1
+  - name: add-multiply
+    passes:
+    - vert: builtin/internal/particle-vs-legacy:lpvs_main
+      frag: ikame-particle-fs:multiply
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b3
+      properties: *p1
+}%
+
+CCProgram ikame-particle-fs %{
+  precision mediump float;
+  #include <legacy/output>
+  #include <builtin/internal/embedded-alpha>
+
+  in vec2 uv;
+  in vec4 color;
+
+  uniform sampler2D mainTexture;
+  uniform sampler2D noiseTexture;
+  uniform sampler2D maskTexture;
+  uniform sampler2D flowTexture;
+
+  uniform IKameParams {
+    vec4 tintColor;
+    vec4 emissionScale;
+    vec4 speedMainTexUVNoiseZW;
+    vec4 distortSpeedXYPowerZW;
+  };
+
+  vec4 add () {
+    vec2 scrolledUV = uv;
+    float distPower = distortSpeedXYPowerZW.z;
+    if (distPower > 0.001) {
+      vec2 flowDir = (texture(flowTexture, uv).rg - 0.5) * 2.0;
+      scrolledUV += flowDir * distPower;
+    }
+
+    vec4 texColor = CCSampleWithAlphaSeparated(mainTexture, scrolledUV);
+    vec4 noiseCol = texture(noiseTexture, uv);
+    float maskVal = texture(maskTexture, uv).a;
+
+    vec4 col = color * tintColor * texColor;
+    col.rgb *= noiseCol.rgb * emissionScale.x;
+    col.a *= noiseCol.a * maskVal;
+    return CCFragOutput(col);
+  }
+
+  vec4 alphaBlend () {
+    vec2 scrolledUV = uv;
+    float distPower = distortSpeedXYPowerZW.z;
+    if (distPower > 0.001) {
+      vec2 flowDir = (texture(flowTexture, uv).rg - 0.5) * 2.0;
+      scrolledUV += flowDir * distPower;
+    }
+
+    vec4 texColor = CCSampleWithAlphaSeparated(mainTexture, scrolledUV);
+    vec4 noiseCol = texture(noiseTexture, uv);
+    float maskVal = texture(maskTexture, uv).a;
+
+    vec4 col = color * tintColor * texColor;
+    col.rgb *= noiseCol.rgb * emissionScale.x;
+    col.a *= noiseCol.a * maskVal;
+    col.rgb *= col.a;
+    return CCFragOutput(col);
+  }
+
+  vec4 multiply () {
+    vec2 scrolledUV = uv;
+    float distPower = distortSpeedXYPowerZW.z;
+    if (distPower > 0.001) {
+      vec2 flowDir = (texture(flowTexture, uv).rg - 0.5) * 2.0;
+      scrolledUV += flowDir * distPower;
+    }
+
+    vec4 texColor = CCSampleWithAlphaSeparated(mainTexture, scrolledUV);
+    vec4 noiseCol = texture(noiseTexture, uv);
+    float maskVal = texture(maskTexture, uv).a;
+
+    vec4 col;
+    col.rgb = tintColor.rgb * texColor.rgb * color.rgb * noiseCol.rgb * emissionScale.x;
+    col.a = texColor.a * color.a * tintColor.a * noiseCol.a * maskVal;
+    return CCFragOutput(col);
+  }
+}%

@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, EventMouse, math, Node, Sprite, tween, Tween, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Component, EventMouse, math, Node, sp, Sprite, tween, Tween, UITransform, Vec3 } from 'cc';
 import { Order } from '../Order/Order';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
@@ -14,6 +14,7 @@ export class Fish extends Component {
     @property({ readonly: true }) id: number = -1;
 
     @property(Node) visual: Node = null;
+    @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
 
     onclick: () => void = null;
 
@@ -34,6 +35,7 @@ export class Fish extends Component {
 
     protected onLoad(): void {
         this._button = this.getComponent(Button)
+        this.fishAnim = this.visual.getComponent(sp.Skeleton);
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
@@ -48,13 +50,14 @@ export class Fish extends Component {
     }
     initialize(id: number) {
         this.id = id;
-        const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
-        this.visual.getComponent(Sprite).spriteFrame = spriteFrame;
+        // const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
+        // this.visual.getComponent(Sprite).spriteFrame = spriteFrame;
+        this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
         // Match the visual to this sprite's real (trimmed) size instead of whatever size the
         // prefab happened to be baked with - fish types vary a lot in size, and that size is
         // what Bubble.calculateRadius() reads via getSize(), so bubbles size themselves
         // differently depending on which fish they actually contain.
-        this.visual.getComponent(UITransform).setContentSize(spriteFrame.rect.width, spriteFrame.rect.height);
+        this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
     }
 
     onFishClick() {

@@ -13,5 +13,11 @@
       "y": 10
     }
   },
-  "custom_joint_texture_layouts": []
+  "custom_joint_texture_layouts": [],
+  "layer": [
+    {
+      "name": "VFX",
+      "value": 1
+    }
+  ]
 }

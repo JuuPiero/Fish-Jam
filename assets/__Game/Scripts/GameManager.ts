@@ -54,7 +54,6 @@ export class GameManager extends Component {
     onNewGame = () => {
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
-
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
     }
 
@@ -160,11 +159,13 @@ export class GameManager extends Component {
             return;
         }
 
-        if (!slotManager.hasFreeSlot()) {
+        // Reserve the slot first: checking before park() would miss the moment this fish fills
+        // the final available slot, leaving a full bench without triggering the lose state.
+        const parked = slotManager.park(fish, this.flyLayer);
+        if (!parked || !slotManager.hasFreeSlot()) {
             EventBus.emit(GameEvents.LEVEL_LOSE);
             return;
         }
-        slotManager.park(fish, this.flyLayer);
     }
 
 }

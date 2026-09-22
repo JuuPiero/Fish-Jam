@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Prefab, SpriteFrame } from 'cc';
+import { _decorator, CCString, Component, Node, Prefab, SpriteFrame } from 'cc';
 import { bh } from 'db://scriptable-asset/scriptable_runtime';
 
 const { ccclass, property } = _decorator;
@@ -7,6 +7,17 @@ const { ccclass, property } = _decorator;
 @bh.scriptable('FishConfigSA')
 export class FishConfigSA extends bh.ScriptableAsset {
     @property(SpriteFrame) fishs: SpriteFrame[] = []
+
+
+    @property({type: CCString}) fishes: string[] = [];
+
+    // onLoaded(): void {
+    //     const basename = 'sprite_000';
+
+    //     for (let i = 0; i < 80; i++) {
+    //         this.fishes.push(basename + i);
+    //     }
+    // }
 
 }
 

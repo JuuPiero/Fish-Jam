@@ -1,0 +1,6 @@
+dist/*.js
+dist/*.js.map
+dist/**/*.js
+dist/**/*.js.map
+!dist/.gitkeep
+node_modules/

@@ -9,15 +9,22 @@ const { ccclass, property } = _decorator;
 @ccclass('Bubble')
 export class Bubble extends Component {
     @property({ readonly: true }) radius: number = 0;
-    _uiTransform: UITransform;
+    private _visualTransform: UITransform;
     _collider: CircleCollider2D = null;
+
+
+    @property(Node) visual: Node = null;
+    @property(Node) bubbleContainer: Node = null;
 
 
     @property({ readonly: true, type: [Fish] }) fishes: Fish[] = []
 
-    private static readonly FISH_GAP = 10;
-    private static readonly BUBBLE_PADDING = 30;
-    private static readonly MIN_RADIUS = 100;
+    // A small visual overlap makes the fish cluster feel fuller and lets the bubble stay compact.
+    private static readonly FISH_OVERLAP = 8;
+    // Keep small groups compact; the packing routine grows the bubble only when a particular
+    // random layout genuinely needs more room.
+    private static readonly BUBBLE_PADDING = 10;
+    private static readonly MIN_RADIUS = 55;
 
     // Only bounce when the bubble is actually moving with some speed - e.g. floating up at the
     // start, or resettling after a neighbor gets destroyed. Bubbles already at rest constantly
@@ -37,17 +44,37 @@ export class Bubble extends Component {
     @property({ tooltip: 'Contact friction against other bubbles/borders - kept low so bubbles slide past each other instead of locking into a stuck arch' })
     friction: number = 0.02;
 
+    @property({ tooltip: 'How much the bubble gently expands while idle' })
+    idleBounceScale: number = 1.015;
+
+    @property({ tooltip: 'Seconds for each half of the idle bounce' })
+    idleBounceDuration: number = 0.8;
+
+    @property({ tooltip: 'Chance that this bubble slowly rotates while idle' })
+    idleRotationChance: number = 0.6;
+
+    @property({ tooltip: 'Average seconds for one full idle rotation' })
+    idleRotationDuration: number = 20;
+
+    @property({ tooltip: 'Maximum extra delay before an idle rotation starts' })
+    idleRotationStartDelay: number = 4;
+
     private _rigidBody: RigidBody2D | null = null;
     private _bounceTween: Tween<UITransform> | null = null;
+    private _idleBounceTween: Tween<UITransform> | null = null;
+    private _idleWobbleTween: Tween<Node> | null = null;
     private _wobbleTween: Tween<Node> | null = null;
 
     protected onLoad(): void {
-        this._uiTransform = this.getComponent(UITransform);
+        this._visualTransform = this.visual.getComponent(UITransform);
         this._collider = this.getComponent(CircleCollider2D);
         this._rigidBody = this.getComponent(RigidBody2D);
         this._collider.friction = this.friction;
         if (this._rigidBody) {
             this._rigidBody.gravityScale = this.buoyancyScale;
+            // The root only drives physics. Keep it unrotated so its BubbleContainer (and the
+            // fish inside it) never inherit angular motion from physics contacts.
+            this._rigidBody.fixedRotation = true;
         }
         this._collider.on(Contact2DType.BEGIN_CONTACT, this.onCollisionEnter, this);
     }
@@ -56,11 +83,11 @@ export class Bubble extends Component {
 
     }
     getRadius() {
-        return this._uiTransform.contentSize.x;
+        return this.radius;
     }
 
-    // Resize the bubble to fit its fishes and lay them out evenly spaced on a ring,
-    // taking each fish's own (possibly different) size into account.
+    // Resize the bubble to fit its fishes. Fish are arranged in a balanced circle around the
+    // center, using each fish's largest dimension to keep their visuals from overlapping too far.
     calculateRadius() {
         const count = this.fishes.length;
         if (count === 0) {
@@ -72,34 +99,37 @@ export class Bubble extends Component {
             return Math.max(size.width, size.height) * 0.5;
         });
         const maxFishRadius = Math.max(...fishRadii);
-        const angleStep = (Math.PI * 2) / count;
-
-        // Ring radius must be big enough that every pair of neighboring fish
-        // (which can have different sizes) doesn't overlap.
-        let ringRadius = 0;
-        if (count > 1) {
-            for (let i = 0; i < count; i++) {
-                const next = (i + 1) % count;
-                const minCenterDistance = fishRadii[i] + fishRadii[next] + Bubble.FISH_GAP;
-                const requiredRingRadius = minCenterDistance / (2 * Math.sin(angleStep / 2));
-                ringRadius = Math.max(ringRadius, requiredRingRadius);
-            }
-        }
-
-        const bubbleRadius = Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + Bubble.BUBBLE_PADDING);
+        const bubbleRadius = this.positionFishesInCircle(fishRadii, maxFishRadius);
 
         this.radius = bubbleRadius;
-        this._uiTransform.setContentSize(bubbleRadius * 2, bubbleRadius * 2);
+        this._visualTransform.setContentSize(bubbleRadius * 2, bubbleRadius * 2);
         this._collider.radius = bubbleRadius;
+    }
 
+    private positionFishesInCircle(fishRadii: number[], maxFishRadius: number): number {
+        const count = this.fishes.length;
+        if (count === 1) {
+            this.fishes[0].node.setPosition(0, 0, 0);
+            return Math.max(Bubble.MIN_RADIUS, maxFishRadius + Bubble.BUBBLE_PADDING);
+        }
+
+        const angleStep = (Math.PI * 2) / count;
+        let ringRadius = 0;
+        for (let index = 0; index < count; index++) {
+            const nextIndex = (index + 1) % count;
+            const minCenterDistance = fishRadii[index] + fishRadii[nextIndex] - Bubble.FISH_OVERLAP;
+            ringRadius = Math.max(ringRadius, minCenterDistance / (2 * Math.sin(angleStep * 0.5)));
+        }
+
+        // Randomize only the orientation and a tiny amount of spacing; the group remains a
+        // centered, recognizable circle instead of scattering through the entire bubble.
+        ringRadius *= 1 + Math.random() * 0.06;
+        const startAngle = Math.random() * Math.PI * 2;
         this.fishes.forEach((fish, index) => {
-            if (count === 1) {
-                fish.node.setPosition(0, 0, 0);
-                return;
-            }
-            const angle = angleStep * index;
+            const angle = startAngle + angleStep * index;
             fish.node.setPosition(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0);
         });
+        return Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + Bubble.BUBBLE_PADDING);
     }
 
     // Called when a fish inside this bubble gets clicked and flies off. Detaches it from the
@@ -126,6 +156,7 @@ export class Bubble extends Component {
     // so the popping bubble stops pushing/getting pushed by its neighbors.
     private pop() {
         this._bounceTween?.stop();
+        this.stopIdleBounce();
         this._wobbleTween?.stop();
         AudioManager.instance.playOneShot('Pop')
         if (this._collider) {
@@ -141,7 +172,7 @@ export class Bubble extends Component {
             .call(() => this.node.destroy())
             .start();
 
-        const sprite = this.getComponent(Sprite);
+        const sprite = this.visual.getComponent(Sprite);
         if (sprite) {
             tween(sprite)
                 .delay(0.05)
@@ -155,12 +186,13 @@ export class Bubble extends Component {
         //spawn fishes
         for (const fishId of data.fishes) {
             const fishNode = instantiate(fishPrefab)
-            fishNode.setParent(this.node);
+            fishNode.setParent(this.bubbleContainer);
             const fish = fishNode.getComponent(Fish)
             this.fishes.push(fish);
             fish.initialize(fishId);
         }
         this.calculateRadius();
+        this.startIdleBounce();
     }
 
 
@@ -173,25 +205,27 @@ export class Bubble extends Component {
     }
 
     // Juicy jelly "boing" on impact: a couple of damped squash/stretch oscillations plus a
-    // matching rotation wobble. Both only ever touch the sprite's contentSize and the node's
-    // z-angle - a circle collider doesn't care about rotation, so the CircleCollider2D radius
-    // and the fish children's local positions never move, and bubbles can't drift into
-    // overlapping each other.
+    // matching rotation wobble. Both only ever touch `visual`; the root node continues to own
+    // physics/collider state, while fish stay in their separate bubbleContainer.
     bounce() {
+        this.stopIdleBounce();
         this._bounceTween?.stop();
         this._wobbleTween?.stop();
 
         const size = this.radius * 2;
-        this._bounceTween = tween(this._uiTransform)
+        this._bounceTween = tween(this._visualTransform)
             .to(0.06, { contentSize: new Size(size * 1.1, size * 0.92) }, { easing: 'quadOut' })
             .to(0.09, { contentSize: new Size(size * 0.96, size * 1.05) }, { easing: 'sineInOut' })
             .to(0.11, { contentSize: new Size(size * 1.02, size * 0.98) }, { easing: 'sineInOut' })
             .to(0.16, { contentSize: new Size(size, size) }, { easing: 'elasticOut' })
-            .call(() => { this._bounceTween = null; })
+            .call(() => {
+                this._bounceTween = null;
+                this.startIdleBounce();
+            })
             .start();
 
         const kick = (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 8);
-        this._wobbleTween = tween(this.node)
+        this._wobbleTween = tween(this.visual)
             .to(0.06, { angle: kick }, { easing: 'quadOut' })
             .to(0.09, { angle: -kick * 0.5 }, { easing: 'sineInOut' })
             .to(0.11, { angle: kick * 0.2 }, { easing: 'sineInOut' })
@@ -200,7 +234,51 @@ export class Bubble extends Component {
             .start();
     }
 
+    // Keep stationary bubbles feeling alive without changing their physics collider. The
+    // alternating squash/stretch and a slow rotation make this read as a jelly bounce, rather
+    // than simply a uniform breathing scale. A stronger collision bounce temporarily takes over.
+    private startIdleBounce() {
+        if (this._idleBounceTween || this.radius <= 0) {
+            return;
+        }
+
+        const size = this.radius * 2;
+        const stretchedSize = size * this.idleBounceScale;
+        const squashedSize = size * (2 - this.idleBounceScale);
+        const idleDelay = Math.random() * this.idleBounceDuration;
+        this._idleBounceTween = tween(this._visualTransform)
+            .delay(idleDelay)
+            .repeatForever(
+                tween()
+                    .to(this.idleBounceDuration * 0.35, { contentSize: new Size(stretchedSize, squashedSize) }, { easing: 'sineOut' })
+                    .to(this.idleBounceDuration * 0.45, { contentSize: new Size(squashedSize, stretchedSize) }, { easing: 'sineInOut' })
+                    .to(this.idleBounceDuration * 0.4, { contentSize: new Size(size, size) }, { easing: 'sineInOut' })
+                    .delay(this.idleBounceDuration * 1.5),
+            )
+            .start();
+
+        // Vary whether, when, how fast, and in which direction each bubble rotates so groups
+        // never look synchronized. Some bubbles intentionally remain still.
+        if (Math.random() < this.idleRotationChance) {
+            const rotationDuration = this.idleRotationDuration * (0.8 + Math.random() * 0.6);
+            const rotationAngle = Math.random() < 0.5 ? 360 : -360;
+            this._idleWobbleTween = tween(this.visual)
+                .delay(idleDelay + Math.random() * this.idleRotationStartDelay)
+                .repeatForever(
+                    tween()
+                        .by(rotationDuration, { angle: rotationAngle }, { easing: 'linear' }),
+                )
+                .start();
+        }
+    }
+
+    private stopIdleBounce() {
+        this._idleBounceTween?.stop();
+        this._idleWobbleTween?.stop();
+        this._idleBounceTween = null;
+        this._idleWobbleTween = null;
+        this.visual.angle = 0;
+    }
+
 
 }
-
-

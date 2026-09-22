@@ -6,6 +6,9 @@ const { ccclass, property } = _decorator;
 
 @ccclass('SlotManager')
 export class SlotManager extends Component {
+
+    @property(Node) slotContainer: Node = null;
+
     @property spacing: number = 0;
     @property count: number = 5;
 
@@ -13,8 +16,11 @@ export class SlotManager extends Component {
     // Parallel to _slots: the fish waiting in that slot, or null if it's free.
     private _occupants: (Fish | null)[] = [];
 
+
+
+
     initialize() {
-        for (const child of this.node.children.slice()) {
+        for (const child of this.slotContainer.children.slice()) {
             child.removeFromParent();
             child.destroy();
         }
@@ -26,14 +32,14 @@ export class SlotManager extends Component {
         const startX = -(this.count - 1) * this.spacing * 0.5;
         for (let i = 0; i < this.count; i++) {
             const slotNode = instantiate(slotPrefab);
-            slotNode.setParent(this.node);
+            slotNode.setParent(this.slotContainer);
             slotNode.setPosition(startX + i * this.spacing, 0, 0);
             this._slots.push(slotNode);
             this._occupants.push(null);
         }
     }
 
-    hasFreeSlot(): boolean {
+    hasFreeSlot(): boolean {        
         return this._occupants.some(fish => fish === null);
     }
 

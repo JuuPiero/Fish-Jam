@@ -1,0 +1,83 @@
+{
+  "package_version": 2,
+  "version": "1.0.0",
+  "name": "ikame-vfx-browser",
+  "description": "Browse and import VFX from IKame VFX Hub server",
+  "main": "./dist/main.js",
+  "editor": ">=3.8.0",
+  "panels": {
+    "browser": {
+      "title": "IKame VFX Browser",
+      "type": "dockable",
+      "main": "dist/panels/browser",
+      "size": {
+        "min-width": 800,
+        "min-height": 500,
+        "width": 1024,
+        "height": 600
+      }
+    },
+    "import-review": {
+      "title": "Import Review",
+      "type": "simple",
+      "main": "dist/panels/import-review",
+      "size": {
+        "min-width": 600,
+        "min-height": 400,
+        "width": 700,
+        "height": 500
+      }
+    }
+  },
+  "contributions": {
+    "menu": [
+      {
+        "path": "Extensions",
+        "label": "IKame VFX Browser",
+        "message": "open-browser"
+      }
+    ],
+    "messages": {
+      "open-browser": {
+        "methods": [
+          "openBrowser"
+        ]
+      },
+      "open-import-review": {
+        "methods": [
+          "openImportReview"
+        ]
+      },
+      "start-import": {
+        "methods": [
+          "startImport"
+        ]
+      },
+      "import-complete": {
+        "methods": []
+      },
+      "getImportReviewData": {
+        "methods": ["getImportReviewData"]
+      }
+    },
+    "profile": {
+      "project": {
+        "serverUrl": {
+          "default": "http://10.10.0.204:4649",
+          "label": "Server URL"
+        },
+        "importFolder": {
+          "default": "assets/_IKameVFX/Imported",
+          "label": "Import Folder"
+        }
+      }
+    },
+    "scene": {
+      "script": "./dist/scene.js"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -20,40 +20,38 @@ export class EndGameScreen extends ScreenBase {
     @property(Node)
     logo: Node = null;
 
-    private endGameCallback = () => {
-        PlayableAdsManager.EndGame();
-    };
+   
 
-    public async enter(param?: { isWin, firstLose }): Promise<void> {
-        super.enter(param);
-        PlayableAdsManager.EndGame();
-        // this.downloadBtn.node.active = false;
-        // this.retryBtn.node.active = true;
+    // public async enter(param?: { isWin, firstLose }): Promise<void> {
+    //     super.enter(param);
+    //     PlayableAdsManager.OpenStore();
+    //     // this.downloadBtn.node.active = false;
+    //     // this.retryBtn.node.active = true;
 
-        // // tránh trường hợp enter nhiều lần tạo nhiều timer
-        // this.unschedule(this.endGameCallback);
+    //     // // tránh trường hợp enter nhiều lần tạo nhiều timer
+    //     // this.unschedule(this.endGameCallback);
 
-        // // Sau 3s không có tương tác thì EndGame
-        // this.scheduleOnce(this.endGameCallback, 3);
-    }
+    //     // // Sau 3s không có tương tác thì EndGame
+    //     // this.scheduleOnce(this.endGameCallback, 3);
+    // }
 
-    protected start(): void {
-        TrackingManager.TrackEvent(ETrackingEvent.ENDCARD_SHOWN);
+    // protected start(): void {
+    //     TrackingManager.TrackEvent(ETrackingEvent.ENDCARD_SHOWN);
 
-        // this.downloadBtn.node.on(Button.EventType.CLICK, () => {
-        //     // Có tương tác => hủy EndGame sau 3s
-        //     this.unschedule(this.endGameCallback);
+    //     // this.downloadBtn.node.on(Button.EventType.CLICK, () => {
+    //     //     // Có tương tác => hủy EndGame sau 3s
+    //     //     this.unschedule(this.endGameCallback);
 
-        //     TrackingManager.TrackEvent(ETrackingEvent.CTA_CLICKED);
-        //     PlayableAdsManager.OpenStore();
-        // });
+    //     //     TrackingManager.TrackEvent(ETrackingEvent.CTA_CLICKED);
+    //     //     PlayableAdsManager.OpenStore();
+    //     // });
 
-        // this.retryBtn.node.on(Button.EventType.CLICK, () => {
-        //     // Có tương tác => hủy EndGame sau 3s
-        //     this.unschedule(this.endGameCallback);
-        //     TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_RETRY);
-        //     EventBus.emit(GameEvents.NEW_LEVEL);
-        //     this.exit();
-        // });
-    }
+    //     // this.retryBtn.node.on(Button.EventType.CLICK, () => {
+    //     //     // Có tương tác => hủy EndGame sau 3s
+    //     //     this.unschedule(this.endGameCallback);
+    //     //     TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_RETRY);
+    //     //     EventBus.emit(GameEvents.NEW_LEVEL);
+    //     //     this.exit();
+    //     // });
+    // }
 }
