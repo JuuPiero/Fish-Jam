@@ -60,7 +60,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 16,
+    "_layer": 1073741824,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -110,7 +110,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 16,
+    "_layer": 1073741824,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -315,7 +315,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 16,
+    "_layer": 1073741824,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -520,7 +520,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 16,
+    "_layer": 1073741824,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -725,7 +725,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 16,
+    "_layer": 1073741824,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -926,6 +926,7 @@
       "__id__": 0
     },
     "fileId": "8bzRLJGdxEUq2ztEjx1QXQ",
+    "instance": null,
     "targetOverrides": null
   }
 ]

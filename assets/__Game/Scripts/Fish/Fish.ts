@@ -4,6 +4,7 @@ import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
+import { TrailRenderer2D } from '../Effect/TrailRenderer2D';
 const { ccclass, property } = _decorator;
 
 @ccclass('Fish')
@@ -15,6 +16,8 @@ export class Fish extends Component {
 
     @property(Node) visual: Node = null;
     @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
+    @property({ type: TrailRenderer2D, tooltip: 'Optional sparkle trail played only while the fish is flying to a slot/order' })
+    trail: TrailRenderer2D = null;
 
     onclick: () => void = null;
 
@@ -53,6 +56,8 @@ export class Fish extends Component {
     protected onLoad(): void {
         this._button = this.getComponent(Button)
         this.fishAnim = this.visual.getComponent(sp.Skeleton);
+        // Only emit while actually flying (see _flyTo) - not while sitting in a bubble or bench.
+        this.trail?.stopTrail();
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
@@ -153,6 +158,14 @@ export class Fish extends Component {
             this.node.setParent(parent, true);
         }
 
+        // Spawned segments live in the same layer the fish flies through (not as its own
+        // children), so they stay put in world space and keep fading after the fish arrives -
+        // and, for flyToOrder, after the fish itself gets destroyed.
+        if (this.trail) {
+            this.trail.trailParent = parent;
+            this.trail.startTrail();
+        }
+
         const endLocalPos = new Vec3();
         if (parent) {
             parent.inverseTransformPoint(endLocalPos, endWorldPos);
@@ -194,6 +207,7 @@ export class Fish extends Component {
             .call(() => {
                 this._flyTween = null;
                 this.node.angle = 0;
+                this.trail?.stopTrail();
                 onArrive?.();
             })
             .start();

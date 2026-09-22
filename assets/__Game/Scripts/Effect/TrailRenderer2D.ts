@@ -38,8 +38,11 @@ export class TrailRenderer2D extends Component {
     @property({ tooltip: 'Segment size in pixels (square). 0 keeps the sprite frame\'s original size.' })
     segmentSize: number = 0;
 
+    // Off by default: a caller that wants explicit start/stop control (e.g. Fish only playing
+    // the trail while mid-flight) would otherwise race against this component's own onEnable,
+    // which runs after the caller's onLoad and would re-enable emission regardless.
     @property
-    autoStart: boolean = true;
+    autoStart: boolean = false;
 
     private _pool: NodePool = new NodePool();
     private _active: Node[] = [];
