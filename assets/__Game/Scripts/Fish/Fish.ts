@@ -18,20 +18,37 @@ export class Fish extends Component {
 
     onclick: () => void = null;
 
-    private static readonly FLY_DURATION = 0.42;
-    private static readonly MIN_ARC_HEIGHT = 140;
-    private static readonly ARC_HEIGHT_RATIO = 0.35;
-    private static readonly PEAK_SCALE_BOOST = 1.25;
+    // Keep the Cocos path behavior aligned with GameItemController in the Unity project: path
+    // duration is based on its total length, not a fixed duration per destination.
+    @property({ tooltip: 'Flight speed in UI units per second' })
+    flySpeed: number = 700;
 
-    // How many straight segments approximate the curved arc - this Cocos version's Tween has
-    // no bezierTo, so the curve is sampled into a short polyline instead.
-    private static readonly ARC_SEGMENTS = 10;
+    @property({ tooltip: 'Minimum duration so short flights remain visible' })
+    flyMinDuration: number = 0.55;
+
+    @property({ tooltip: 'Perpendicular offset of the default flight waypoint' })
+    flyWaypointOffset: number = 100;
+
+    @property({ tooltip: 'Vertical approach distance before landing in a waiting slot' })
+    flySlotApproachDistance: number = 65;
+
+    @property({ tooltip: 'Visual forward-angle correction while following the flight path' })
+    flyAngleOffset: number = 180;
+
+    @property({ tooltip: 'Height above an order lid before the fish descends into it' })
+    flyOrderLidApproachDistance: number = 140;
+
+    private static readonly PATH_SAMPLES_PER_SEGMENT = 16;
 
     private static readonly HOVER_SCALE = new Vec3(1.1, 1.1, 1.1);
     private static readonly HOVER_DURATION = 0.12;
 
-    private _flyTween: Tween<Node> | null = null;
+    private _flyTween: Tween<{ progress: number }> | null = null;
     private _hoverTween: Tween<Node> | null = null;
+    private _pathPoints: Vec3[] = [];
+    private _pathSamples: Vec3[] = [];
+    private _pathDistances: number[] = [];
+    private _pathLength = 0;
 
     protected onLoad(): void {
         this._button = this.getComponent(Button)
@@ -67,6 +84,7 @@ export class Fish extends Component {
         this._hoverTween?.stop();
         this._hoverTween = null;
         this.node.setScale(1, 1, 1);
+        this.node.angle = 0;
 
         this.onclick?.();
         EventBus.emit(GameEvents.FISH_CLICKED, this);
@@ -97,9 +115,9 @@ export class Fish extends Component {
         this._button.interactable = value;
     }
 
-    // Flies to a waiting bench slot and stays there (still visible, waiting for a matching order).
+    // A waiting slot uses the default curved path and a short vertical approach before landing.
     flyToSlot(slot: Node, flyLayer: Node, onArrive?: () => void) {
-        this._flyTo(slot, flyLayer, onArrive);
+        this._flyTo(slot, flyLayer, null, onArrive);
     }
 
     // Claims the next empty placeholder on `order` right away (so a second matching fish can't
@@ -110,24 +128,20 @@ export class Fish extends Component {
         if (!slotPos) {
             return;
         }
-        this._flyTo(slotPos, flyLayer, () => {
+        // lidPos is the order's entry waypoint. Supplying an empty path still deliberately
+        // disables the waiting-slot approach, matching Unity's entryPath behavior.
+        this._flyTo(slotPos, flyLayer, order.lidPos ? [order.lidPos] : [], () => {
             order.fillSlot(slotPos);
             this.node.destroy();
             onArrive?.();
         });
     }
 
-    // Pulls the fish out onto `flyLayer` (normally the canvas root, so it renders above
-    // everything instead of being clipped/scaled by whatever local UI it started under) and
-    // hops it over on a smooth curved arc to land exactly matching `target`'s world position
-    // and scale - puffing up a bit at the apex, then shrinking back down to size as it settles.
-    private _flyTo(target: Node, flyLayer: Node, onArrive?: () => void) {
+    // Pull the fish onto the flight layer, then follow the same sampled centripetal Catmull-Rom
+    // path style as Unity's GameItemController. Sampling by distance keeps speed consistent
+    // across short and long routes.
+    private _flyTo(target: Node, flyLayer: Node, entryPath: readonly Node[] | null, onArrive?: () => void) {
         this._flyTween?.stop();
-        // In case something still calls this without going through onFishClick's own reset
-        // (e.g. re-routing a fish straight from the waiting bench), make sure a leftover hover
-        // animation can't fight the flight tween over the same `scale` property. Note: don't
-        // force the scale itself back to identity here - a re-routed bench fish's current scale
-        // (matching whatever slot it's resting in) is the correct flight starting point.
         this._hoverTween?.stop();
         this._hoverTween = null;
 
@@ -155,42 +169,153 @@ export class Fish extends Component {
 
         const startPos = this.node.position.clone();
         const startScale = this.node.scale.clone();
-        const delta = new Vec3();
-        Vec3.subtract(delta, endLocalPos, startPos);
-        // Taller hops for longer trips, but never a flat, barely-there arc for short ones.
-        const arcHeight = Math.max(Fish.MIN_ARC_HEIGHT, Math.abs(delta.x) * Fish.ARC_HEIGHT_RATIO);
-        const peakY = Math.max(startPos.y, endLocalPos.y) + arcHeight;
-        // Two control points spread along the way, both raised to peakY, describe one smooth
-        // cubic-bezier hump instead of a straight-line "V" with a sharp corner at the top.
-        const control1 = new Vec3(startPos.x + delta.x * 0.33, peakY, 0);
-        const control2 = new Vec3(startPos.x + delta.x * 0.66, peakY, 0);
-        const peakScale = new Vec3(endLocalScale.x * Fish.PEAK_SCALE_BOOST, endLocalScale.y * Fish.PEAK_SCALE_BOOST, 1);
-
-        // This Cocos version's Tween has no bezierTo, so sample the same cubic-bezier curve
-        // into a short chain of straight `.to()` steps - close enough together (at 60fps, a
-        // new waypoint every couple of frames) to read as one smooth curve, not a polyline.
-        let chain = tween(this.node);
-        for (let i = 1; i <= Fish.ARC_SEGMENTS; i++) {
-            const t = i / Fish.ARC_SEGMENTS;
-            const u = 1 - t;
-            const bx = u * u * u * startPos.x + 3 * u * u * t * control1.x + 3 * u * t * t * control2.x + t * t * t * endLocalPos.x;
-            const by = u * u * u * startPos.y + 3 * u * u * t * control1.y + 3 * u * t * t * control2.y + t * t * t * endLocalPos.y;
-
-            // Scale ramps up to its peak by the arc's apex (t=0.5), then eases back down to
-            // the target's exact size by the time it lands.
-            const scale = t <= 0.5
-                ? Vec3.lerp(new Vec3(), startScale, peakScale, t / 0.5)
-                : Vec3.lerp(new Vec3(), peakScale, endLocalScale, (t - 0.5) / 0.5);
-
-            chain = chain.to(Fish.FLY_DURATION / Fish.ARC_SEGMENTS, { position: new Vec3(bx, by, 0), scale }, { easing: 'linear' });
-        }
-
-        this._flyTween = chain
+        this.buildFlightPath(startPos, endLocalPos, parent, entryPath);
+        const duration = Math.max(this.flyMinDuration, this.flySpeed > 0 ? this._pathLength / this.flySpeed : 0);
+        const flight = { progress: 0 };
+        this._flyTween = tween(flight)
+            .to(duration, { progress: 1 }, {
+                easing: 'sineInOut',
+                onUpdate: state => {
+                    const position = this.evaluateFlightPath(state.progress);
+                    const lookAhead = this.evaluateFlightPath(Math.min(1, state.progress + 0.01));
+                    this.node.setPosition(position);
+                    const dx = lookAhead.x - position.x;
+                    const dy = lookAhead.y - position.y;
+                    if (dx * dx + dy * dy > 0.001) {
+                        this.node.angle = Math.atan2(dy, dx) * 180 / Math.PI + this.flyAngleOffset;
+                    }
+                    this.node.setScale(
+                        startScale.x + (endLocalScale.x - startScale.x) * state.progress,
+                        startScale.y + (endLocalScale.y - startScale.y) * state.progress,
+                        1,
+                    );
+                },
+            })
             .call(() => {
                 this._flyTween = null;
+                this.node.angle = 0;
                 onArrive?.();
             })
             .start();
+    }
+
+    private buildFlightPath(from: Vec3, to: Vec3, flightParent: Node | null, entryPath: readonly Node[] | null) {
+        this._pathPoints = [from.clone()];
+        if (entryPath !== null) {
+            // Unity stores entry points from inner to outer, so fly through them in reverse.
+            const entryPoints: Vec3[] = [];
+            for (let index = entryPath.length - 1; index >= 0; index--) {
+                const point = entryPath[index];
+                if (!point || !point.isValid) {
+                    continue;
+                }
+                const localPoint = new Vec3();
+                if (flightParent) {
+                    flightParent.inverseTransformPoint(localPoint, point.worldPosition);
+                } else {
+                    Vec3.copy(localPoint, point.worldPosition);
+                }
+                localPoint.z = from.z;
+                entryPoints.push(localPoint);
+            }
+
+            // The Cocos order currently exposes its innermost entry marker as lidPos. Add the
+            // outer approach point here so a fish reaches the lid from above, then descends into
+            // the order instead of curving straight toward a slot from the side.
+            if (entryPoints.length > 0) {
+                const outerPoint = entryPoints[0];
+                this._pathPoints.push(new Vec3(
+                    outerPoint.x,
+                    outerPoint.y + this.flyOrderLidApproachDistance,
+                    outerPoint.z,
+                ));
+                this._pathPoints.push(...entryPoints);
+            }
+        } else {
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > 0.001) {
+                this._pathPoints.push(new Vec3(
+                    from.x + dx * 0.5 - dy / distance * this.flyWaypointOffset,
+                    from.y + dy * 0.5 + dx / distance * this.flyWaypointOffset,
+                    from.z,
+                ));
+            }
+            if (this.flySlotApproachDistance > 0) {
+                this._pathPoints.push(new Vec3(to.x, to.y - this.flySlotApproachDistance, to.z));
+            }
+        }
+        this._pathPoints.push(to.clone());
+        this.sampleFlightPath();
+    }
+
+    private sampleFlightPath() {
+        this._pathSamples = [this._pathPoints[0].clone()];
+        this._pathDistances = [0];
+        const segmentCount = this._pathPoints.length - 1;
+        for (let segment = 0; segment < segmentCount; segment++) {
+            for (let step = 1; step <= Fish.PATH_SAMPLES_PER_SEGMENT; step++) {
+                const point = this.evaluateFlightSegment(segment, step / Fish.PATH_SAMPLES_PER_SEGMENT);
+                const previous = this._pathSamples[this._pathSamples.length - 1];
+                this._pathSamples.push(point);
+                this._pathDistances.push(this._pathDistances[this._pathDistances.length - 1] + Vec3.distance(previous, point));
+            }
+        }
+        this._pathLength = this._pathDistances[this._pathDistances.length - 1];
+    }
+
+    private evaluateFlightSegment(segment: number, u: number): Vec3 {
+        const last = this._pathPoints.length - 1;
+        const p1 = this._pathPoints[segment];
+        const p2 = this._pathPoints[segment + 1];
+        const p0 = segment > 0 ? this._pathPoints[segment - 1] : new Vec3(p1.x * 2 - p2.x, p1.y * 2 - p2.y, p1.z);
+        const p3 = segment + 2 <= last ? this._pathPoints[segment + 2] : new Vec3(p2.x * 2 - p1.x, p2.y * 2 - p1.y, p2.z);
+        const t0 = 0;
+        const t1 = t0 + Fish.knotSpan(p0, p1);
+        const t2 = t1 + Fish.knotSpan(p1, p2);
+        const t3 = t2 + Fish.knotSpan(p2, p3);
+        const t = t1 + (t2 - t1) * u;
+        const a1 = Fish.interpolateKnot(p0, p1, t0, t1, t);
+        const a2 = Fish.interpolateKnot(p1, p2, t1, t2, t);
+        const a3 = Fish.interpolateKnot(p2, p3, t2, t3, t);
+        const b1 = Fish.interpolateKnot(a1, a2, t0, t2, t);
+        const b2 = Fish.interpolateKnot(a2, a3, t1, t3, t);
+        return Fish.interpolateKnot(b1, b2, t1, t2, t);
+    }
+
+    private evaluateFlightPath(progress: number): Vec3 {
+        if (this._pathLength <= 0.001) {
+            return this._pathSamples[0].clone();
+        }
+        const distance = progress * this._pathLength;
+        const last = this._pathSamples.length - 1;
+        let low = 0;
+        let high = last;
+        while (high - low > 1) {
+            const middle = (low + high) >> 1;
+            if (this._pathDistances[middle] <= distance) {
+                low = middle;
+            } else {
+                high = middle;
+            }
+        }
+        const span = this._pathDistances[high] - this._pathDistances[low];
+        const ratio = span > 0.001 ? (distance - this._pathDistances[low]) / span : 0;
+        return Vec3.lerp(new Vec3(), this._pathSamples[low], this._pathSamples[high], ratio);
+    }
+
+    private static knotSpan(from: Vec3, to: Vec3): number {
+        return Math.max(Math.sqrt(Vec3.distance(from, to)), 0.0001);
+    }
+
+    private static interpolateKnot(from: Vec3, to: Vec3, fromKnot: number, toKnot: number, knot: number): Vec3 {
+        const ratio = (knot - fromKnot) / (toKnot - fromKnot);
+        return new Vec3(
+            from.x + (to.x - from.x) * ratio,
+            from.y + (to.y - from.y) * ratio,
+            from.z + (to.z - from.z) * ratio,
+        );
     }
 
     getSize() {

@@ -35,10 +35,13 @@
       },
       {
         "__id__": 18
+      },
+      {
+        "__id__": 20
       }
     ],
     "_prefab": {
-      "__id__": 20
+      "__id__": 22
     },
     "_lpos": {
       "__type__": "cc.Vec3",
@@ -449,6 +452,52 @@
   {
     "__type__": "cc.CompPrefabInfo",
     "fileId": "78L4DuZspIGbANcaRlv0Wg"
+  },
+  {
+    "__type__": "706c7te83pDpq/HzOtcNyg8",
+    "_name": "",
+    "_objFlags": 0,
+    "__editorExtras__": {},
+    "node": {
+      "__id__": 1
+    },
+    "_enabled": false,
+    "__prefab": {
+      "__id__": 21
+    },
+    "spriteFrame": {
+      "__uuid__": "c016785c-4c61-4d37-86d8-74ebd72c580d@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
+    "trailParent": {
+      "__id__": 1
+    },
+    "minDistance": 10,
+    "lifeTime": 0.4,
+    "maxSegments": 20,
+    "startColor": {
+      "__type__": "cc.Color",
+      "r": 255,
+      "g": 255,
+      "b": 255,
+      "a": 255
+    },
+    "endColor": {
+      "__type__": "cc.Color",
+      "r": 255,
+      "g": 255,
+      "b": 255,
+      "a": 0
+    },
+    "startScale": 0.1,
+    "endScale": 0.01,
+    "segmentSize": 0,
+    "autoStart": true,
+    "_id": ""
+  },
+  {
+    "__type__": "cc.CompPrefabInfo",
+    "fileId": "a9JLDOis5JW5eXb+VRsews"
   },
   {
     "__type__": "cc.PrefabInfo",
