@@ -65,18 +65,20 @@ export class GameManager extends Component {
         if (this._isGameOver) {
             return;
         }
+        AudioManager.instance.playOneShot('Win')
         this._isGameOver = true;
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_SOLVED)
-        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', {isWin: true})
+        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', { isWin: true })
     }
 
     onLoseGame = () => {
         if (this._isGameOver) {
             return;
         }
+        AudioManager.instance.playOneShot('Lose')
         this._isGameOver = true;
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_FAILED)
-        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', {isWin: false})
+        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', { isWin: false })
     }
 
     isPlayMusic = true;
@@ -134,6 +136,8 @@ export class GameManager extends Component {
         if (this._isGameOver) {
             return;
         }
+        AudioManager.instance.playOneShot('Click')
+
         fish.setInteractable(false);
 
         // Detach from its bubble first (this may pop the bubble if it was the last fish in it)
@@ -167,16 +171,25 @@ export class GameManager extends Component {
                 if (nextId === null) {
                     return;
                 }
-                // Pull every fish already waiting on the bench for this id, not just one - the
-                // order has room for up to 3, and a bench could easily be holding 2 or 3 of a
-                // kind that only just became orderable.
-                while (!order.isFullyClaimed) {
-                    const waitingFish = slotManager.takeMatching(nextId);
-                    if (!waitingFish) {
-                        break;
+                // completeOrder() already reset the order's claim/deliver counts synchronously
+                // (so a second matching fish can't slip in mid-check), but its shrink-then-pop
+                // visual (playResetPop) is still mid-animation for popDuration seconds. A
+                // waiting fish lands by reparenting into one of the order's slots, which are
+                // themselves descendants of the order's own node - sending it off right away
+                // would land it while still being scaled/rotated by that pop tween. Wait for the
+                // pop to finish before pulling any waiting fish toward this order.
+                this.scheduleOnce(() => {
+                    // Pull every fish already waiting on the bench for this id, not just one -
+                    // the order has room for up to 3, and a bench could easily be holding 2 or 3
+                    // of a kind that only just became orderable.
+                    while (!order.isFullyClaimed) {
+                        const waitingFish = slotManager.takeMatching(nextId);
+                        if (!waitingFish) {
+                            break;
+                        }
+                        this.routeFish(waitingFish);
                     }
-                    this.routeFish(waitingFish);
-                }
+                }, order.popDuration);
             });
             return;
         }

@@ -456,6 +456,10 @@
       "__id__": 2
     },
     "fishes": [],
+    "fishGapMin": -2,
+    "fishGapMax": 10,
+    "bubbleEdgePaddingMin": 5,
+    "bubbleEdgePaddingMax": 50,
     "bounceSpeedThreshold": 5,
     "buoyancyScale": 1.6,
     "friction": 0,

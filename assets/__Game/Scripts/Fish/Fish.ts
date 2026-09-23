@@ -4,7 +4,7 @@ import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
-import { TrailRenderer2D } from '../Effect/TrailRenderer2D';
+import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
 const { ccclass, property } = _decorator;
 
 @ccclass('Fish')
@@ -16,8 +16,6 @@ export class Fish extends Component {
 
     @property(Node) visual: Node = null;
     @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
-    @property({ type: TrailRenderer2D, tooltip: 'Optional sparkle trail played only while the fish is flying to a slot/order' })
-    trail: TrailRenderer2D = null;
 
     onclick: () => void = null;
 
@@ -38,11 +36,19 @@ export class Fish extends Component {
     @property({ tooltip: 'Visual forward-angle correction while following the flight path' })
     flyAngleOffset: number = 180;
 
+    @property({ tooltip: 'How quickly the fish turns toward its flight path each frame (0 = no turn, 1 = instant)' })
+    flyRotationSmoothness: number = 0.18;
+
+    @property({ tooltip: 'Normalized point on the flight path where the fish begins turning back to its stable 0-degree pose' })
+    flyRotationSettleStart: number = 0.72;
+
+    @property({ tooltip: 'How far above a slot the fish ends its flight before dropping in' })
+    landingDropHeight: number = 26;
+
     @property({ tooltip: 'Height above an order lid before the fish descends into it' })
     flyOrderLidApproachDistance: number = 140;
 
     private static readonly PATH_SAMPLES_PER_SEGMENT = 16;
-
     private static readonly HOVER_SCALE = new Vec3(1.1, 1.1, 1.1);
     private static readonly HOVER_DURATION = 0.12;
 
@@ -52,12 +58,12 @@ export class Fish extends Component {
     private _pathSamples: Vec3[] = [];
     private _pathDistances: number[] = [];
     private _pathLength = 0;
+    private _landingRotationTween: Tween<Node> | null = null;
+    private _landingScaleTween: Tween<Node> | null = null;
 
     protected onLoad(): void {
         this._button = this.getComponent(Button)
         this.fishAnim = this.visual.getComponent(sp.Skeleton);
-        // Only emit while actually flying (see _flyTo) - not while sitting in a bubble or bench.
-        this.trail?.stopTrail();
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
@@ -80,6 +86,13 @@ export class Fish extends Component {
         // what Bubble.calculateRadius() reads via getSize(), so bubbles size themselves
         // differently depending on which fish they actually contain.
         this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
+
+        // Do not rely only on the prefab's defaultAnimation. Unlike Unity's
+        // SkeletonAnimation (which reapplies its AnimationState after SetSkin), changing a
+        // Cocos skin can leave the skeleton on its current setup pose. Explicitly keep the
+        // swimming track looping so the tail/fins continue animating while this node tweens.
+        this.fishAnim.timeScale = 1;
+        this.fishAnim.setAnimation(0, 'animation', true);
     }
 
     onFishClick() {
@@ -129,8 +142,7 @@ export class Fish extends Component {
     }
 
     // Claims the next empty placeholder on `order` right away (so a second matching fish can't
-    // also get sent here mid-flight) and flies to it. On arrival, lights up that placeholder
-    // and the fish itself is destroyed - the order's own icon now shows it was delivered.
+    // also get sent here mid-flight). On arrival, the Fish itself becomes the slot visual.
     flyToOrder(order: Order, flyLayer: Node, onArrive?: () => void) {
         const slotPos = order.claimNextSlot();
         if (!slotPos) {
@@ -141,7 +153,6 @@ export class Fish extends Component {
         this._flyTo(slotPos, flyLayer, order.lidPos ? [order.lidPos] : [], () => {
             this.landInSlot(slotPos);
             order.fillSlot(slotPos);
-            this.node.destroy();
             onArrive?.();
         });
     }
@@ -152,10 +163,34 @@ export class Fish extends Component {
         if (!slot?.isValid) {
             return;
         }
-        this.node.setParent(slot);
-        this.node.setPosition(Vec3.ZERO);
+        // Preserve the raised end-of-flight world position, then let the fish visibly drop
+        // into its slot. This reads much better for the game's jars and glass tube than a
+        // scale-only punch at a stationary point.
+        this.node.setParent(slot, true);
         this.node.setScale(Vec3.ONE);
-        this.node.angle = 0;
+        // Restore the authored Spine pose after flight. Never keep procedural bone offsets on
+        // a fish that has landed and now acts as a persistent order/slot visual.
+        this.fishAnim.setAnimation(0, 'animation', true);
+        this._landingRotationTween?.stop();
+        this._landingScaleTween?.stop();
+        // `angle: 0` in a normal tween can choose the long numerical route (for example
+        // 270 -> 0). Use the equivalent of 0 degrees nearest to the current angle instead.
+        const stableAngle = this.nearestEquivalentAngle(this.node.angle, 0);
+        this._landingRotationTween = tween(this.node)
+            .to(0.16, { angle: stableAngle }, { easing: 'sineOut' })
+            .call(() => {
+                this.node.angle = 0;
+                this._landingRotationTween = null;
+            })
+            .start();
+        // A water-like landing: drop past the resting point, squash on contact, rebound once,
+        // then settle. Keep it on the root so the Spine swim animation stays untouched.
+        this._landingScaleTween = tween(this.node)
+            .to(0.10, { position: new Vec3(0, -5, 0), scale: new Vec3(1.10, 0.88, 1) }, { easing: 'quadIn' })
+            .to(0.09, { position: new Vec3(0, 2, 0), scale: new Vec3(0.97, 1.04, 1) }, { easing: 'sineOut' })
+            .to(0.16, { position: Vec3.ZERO, scale: Vec3.ONE }, { easing: 'elasticOut' })
+            .call(() => { this._landingScaleTween = null; })
+            .start();
     }
 
     // Pull the fish onto the flight layer, then follow the same sampled centripetal Catmull-Rom
@@ -164,22 +199,17 @@ export class Fish extends Component {
     private _flyTo(target: Node, flyLayer: Node, entryPath: readonly Node[] | null, onArrive?: () => void) {
         this._flyTween?.stop();
         this._hoverTween?.stop();
+        this._landingRotationTween?.stop();
+        this._landingScaleTween?.stop();
         this._hoverTween = null;
 
         const endWorldPos = target.worldPosition.clone();
+        endWorldPos.y += this.landingDropHeight;
         const endWorldScale = target.worldScale.clone();
-
+        AudioManager.instance.playOneShot('Swim')
         const parent = flyLayer ?? target.parent;
         if (parent) {
             this.node.setParent(parent, true);
-        }
-
-        // Spawned segments live in the same layer the fish flies through (not as its own
-        // children), so they stay put in world space and keep fading after the fish arrives -
-        // and, for flyToOrder, after the fish itself gets destroyed.
-        if (this.trail) {
-            this.trail.trailParent = parent;
-            this.trail.startTrail();
         }
 
         const endLocalPos = new Vec3();
@@ -199,6 +229,7 @@ export class Fish extends Component {
         const startPos = this.node.position.clone();
         const startScale = this.node.scale.clone();
         this.buildFlightPath(startPos, endLocalPos, parent, entryPath);
+
         const duration = Math.max(this.flyMinDuration, this.flySpeed > 0 ? this._pathLength / this.flySpeed : 0);
         const flight = { progress: 0 };
         this._flyTween = tween(flight)
@@ -211,7 +242,20 @@ export class Fish extends Component {
                     const dx = lookAhead.x - position.x;
                     const dy = lookAhead.y - position.y;
                     if (dx * dx + dy * dy > 0.001) {
-                        this.node.angle = Math.atan2(dy, dx) * 180 / Math.PI + this.flyAngleOffset;
+                        const direction = Math.atan2(dy, dx) * 180 / Math.PI;
+                        const directionAngle = direction + this.flyAngleOffset;
+                        // Near the destination, smoothly favor the stable slot pose (0°)
+                        // rather than following a rapidly changing final spline tangent.
+                        const settleStart = Math.max(0, Math.min(0.99, this.flyRotationSettleStart));
+                        const settleProgress = Math.max(0, Math.min(1,
+                            (state.progress - settleStart) / (1 - settleStart),
+                        ));
+                        const targetAngle = this.lerpAngleShortest(directionAngle, 0, settleProgress);
+                        this.node.angle = this.smoothAngle(
+                            this.node.angle,
+                            targetAngle,
+                            this.flyRotationSmoothness,
+                        );
                     }
                     this.node.setScale(
                         startScale.x + (endLocalScale.x - startScale.x) * state.progress,
@@ -222,11 +266,31 @@ export class Fish extends Component {
             })
             .call(() => {
                 this._flyTween = null;
-                this.node.angle = 0;
-                this.trail?.stopTrail();
                 onArrive?.();
             })
             .start();
+    }
+
+    // Interpolate along the shortest circular arc. A normal numeric lerp would occasionally
+    // rotate almost a full circle when the target crosses -180/180 degrees.
+    private smoothAngle(from: number, to: number, amount: number): number {
+        const delta = this.shortestAngleDelta(from, to);
+        return from + delta * Math.max(0, Math.min(1, amount));
+    }
+
+    private lerpAngleShortest(from: number, to: number, amount: number): number {
+        return from + this.shortestAngleDelta(from, to) * Math.max(0, Math.min(1, amount));
+    }
+
+    private nearestEquivalentAngle(from: number, target: number): number {
+        return from + this.shortestAngleDelta(from, target);
+    }
+
+    private shortestAngleDelta(from: number, to: number): number {
+        let delta = (to - from) % 360;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        return delta;
     }
 
     private buildFlightPath(from: Vec3, to: Vec3, flightParent: Node | null, entryPath: readonly Node[] | null) {

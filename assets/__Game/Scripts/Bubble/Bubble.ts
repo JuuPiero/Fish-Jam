@@ -24,8 +24,22 @@ export class Bubble extends Component {
     private static readonly FISH_OVERLAP = 8;
     // Keep small groups compact; the packing routine grows the bubble only when a particular
     // random layout genuinely needs more room.
-    private static readonly BUBBLE_PADDING = 10;
     private static readonly MIN_RADIUS = 55;
+
+    @property({ tooltip: 'Smallest extra gap between neighboring fish in a bubble' })
+    fishGapMin: number = -2;
+
+    @property({ tooltip: 'Largest extra gap between neighboring fish in a bubble' })
+    fishGapMax: number = 10;
+
+    @property({ tooltip: 'Smallest empty space between the fish ring and bubble edge' })
+    bubbleEdgePaddingMin: number = 5;
+
+    @property({ tooltip: 'Largest empty space between the fish ring and bubble edge' })
+    bubbleEdgePaddingMax: number = 23;
+
+    private _fishGap = 0;
+    private _bubbleEdgePadding = 10;
 
     // Only bounce when the bubble is actually moving with some speed - e.g. floating up at the
     // start, or resettling after a neighbor gets destroyed. Bubbles already at rest constantly
@@ -111,14 +125,15 @@ export class Bubble extends Component {
         const count = this.fishes.length;
         if (count === 1) {
             this.fishes[0].node.setPosition(0, 0, 0);
-            return Math.max(Bubble.MIN_RADIUS, maxFishRadius + Bubble.BUBBLE_PADDING);
+            return Math.max(Bubble.MIN_RADIUS, maxFishRadius + this._bubbleEdgePadding);
         }
 
         const angleStep = (Math.PI * 2) / count;
         let ringRadius = 0;
         for (let index = 0; index < count; index++) {
             const nextIndex = (index + 1) % count;
-            const minCenterDistance = fishRadii[index] + fishRadii[nextIndex] - Bubble.FISH_OVERLAP;
+            const minCenterDistance = fishRadii[index] + fishRadii[nextIndex]
+                - Bubble.FISH_OVERLAP + this._fishGap;
             ringRadius = Math.max(ringRadius, minCenterDistance / (2 * Math.sin(angleStep * 0.5)));
         }
 
@@ -130,7 +145,7 @@ export class Bubble extends Component {
             const angle = startAngle + angleStep * index;
             fish.node.setPosition(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0);
         });
-        return Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + Bubble.BUBBLE_PADDING);
+        return Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + this._bubbleEdgePadding);
     }
 
     // Called when a fish inside this bubble gets clicked and flies off. Detaches it from the
@@ -195,6 +210,10 @@ export class Bubble extends Component {
     }
 
     initiallize(data: BubbleData) {
+        // Each bubble gets a stable layout variation at spawn: fish still form one centered
+        // circle, but same-count bubbles no longer all have identical diameters.
+        this._fishGap = this.randomRange(this.fishGapMin, this.fishGapMax);
+        this._bubbleEdgePadding = this.randomRange(this.bubbleEdgePaddingMin, this.bubbleEdgePaddingMax);
         const fishPrefab = ServiceLocator.get(GameConfigSA).fishPrefab;
         //spawn fishes
         for (const fishId of data.fishes) {
@@ -206,6 +225,10 @@ export class Bubble extends Component {
         }
         this.calculateRadius();
         this.startIdleBounce();
+    }
+
+    private randomRange(min: number, max: number): number {
+        return min + Math.random() * (max - min);
     }
 
 

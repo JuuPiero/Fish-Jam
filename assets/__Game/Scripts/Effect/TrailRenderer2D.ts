@@ -1,60 +1,68 @@
-import { _decorator, Component, Node, NodePool, Sprite, SpriteFrame, UITransform, Color, Vec3, tween, Tween } from 'cc';
+import { _decorator, Component, Graphics, MotionStreak, Node, SpriteFrame, Texture2D, UITransform, Color, Vec3 } from 'cc';
 const { ccclass, property } = _decorator;
 
+interface TrailDot {
+    x: number;
+    y: number;
+    spawnTime: number;
+    radius: number;
+}
+
 /**
- * Leaves a fading/shrinking trail of sprite copies behind this node as it moves.
- * Attach to the moving node; spawned segments are parented to `trailParent`
- * (not to this node) so they stay put in world space while the emitter moves on.
+ * Leaves a trail of discrete, fading dots behind this node as it moves, drawn with a single
+ * Graphics component instead of one spawned Sprite Node per dot - the same "one render
+ * component, no per-point child Nodes" approach Cocos' own MotionStreak uses internally.
  */
 @ccclass('TrailRenderer2D')
 export class TrailRenderer2D extends Component {
     @property(SpriteFrame)
     spriteFrame: SpriteFrame = null;
 
-    @property({ type: Node, tooltip: 'Parent that holds spawned segments. Defaults to this node\'s parent.' })
-    trailParent: Node = null;
+    @property({ tooltip: 'Minimum distance moved before a new dot is spawned' })
+    minDistance: number = 5;
 
-    @property({ tooltip: 'Minimum distance the node must travel before a new segment is spawned.' })
-    minDistance: number = 10;
+    @property({ tooltip: 'Seconds each dot takes to shrink and fade out once spawned' })
+    lifeTime: number = 0.3;
 
-    @property({ tooltip: 'How long (seconds) each segment stays visible before disappearing.' })
-    lifeTime: number = 0.4;
+    @property({ tooltip: 'Max dots alive at once - oldest is dropped first when exceeded' })
+    maxDots: number = 45;
 
-    @property({ tooltip: 'Max segments alive at once; oldest is recycled first when exceeded.' })
-    maxSegments: number = 20;
+    @property({ tooltip: 'Smallest random radius a spawned dot starts at' })
+    dotRadiusMin: number = 4;
+
+    @property({ tooltip: 'Largest random radius a spawned dot starts at' })
+    dotRadiusMax: number = 10;
 
     @property(Color)
-    startColor: Color = new Color(255, 255, 255, 255);
+    dotColor: Color = new Color(255, 255, 255, 220);
 
-    @property(Color)
-    endColor: Color = new Color(255, 255, 255, 0);
+    // Debug aid: draws a thick MotionStreak ribbon alongside the dots as a known-accurate
+    // reference line, for comparing against if the dots ever look off again. Off by default.
+    @property({ tooltip: 'Debug aid - draws a thick reference ribbon (known correct) next to the dots' })
+    debugRibbon: boolean = false;
 
-    @property
-    startScale: number = 1;
+    private _debugStreak: MotionStreak | null = null;
 
-    @property
-    endScale: number = 0.3;
-
-    @property({ tooltip: 'Segment size in pixels (square). 0 keeps the sprite frame\'s original size.' })
-    segmentSize: number = 0;
-
-    // Off by default: a caller that wants explicit start/stop control (e.g. Fish only playing
-    // the trail while mid-flight) would otherwise race against this component's own onEnable,
-    // which runs after the caller's onLoad and would re-enable emission regardless.
-    @property
-    autoStart: boolean = false;
-
-    private _pool: NodePool = new NodePool();
-    private _active: Node[] = [];
-    private _lastPos: Vec3 = new Vec3();
-    private _emitting: boolean = false;
+    private _graphicsNode: Node | null = null;
+    private _graphics: Graphics | null = null;
+    private _dots: TrailDot[] = [];
+    private _lastSpawnPos: Vec3 = new Vec3();
+    private _emitting = false;
+    private _elapsed = 0;
 
     onLoad() {
-        if (!this.trailParent) this.trailParent = this.node.parent;
-    }
-
-    onEnable() {
-        if (this.autoStart) this.startTrail();
+        if (this.debugRibbon) {
+            this._debugStreak = this.getComponent(MotionStreak) ?? this.addComponent(MotionStreak);
+            this._debugStreak.fadeTime = 0.5;
+            this._debugStreak.stroke = 120;
+            this._debugStreak.minSeg = 1;
+            this._debugStreak.fastMode = true;
+            this._debugStreak.color = new Color(255, 0, 255, 255);
+            if (this.spriteFrame?.texture) {
+                this._debugStreak.texture = this.spriteFrame.texture as Texture2D;
+            }
+            this._debugStreak.enabled = false;
+        }
     }
 
     onDisable() {
@@ -62,97 +70,114 @@ export class TrailRenderer2D extends Component {
     }
 
     onDestroy() {
-        this.clear();
-        this._pool.clear();
+        this._graphicsNode?.destroy();
+        this._graphicsNode = null;
+        this._graphics = null;
     }
 
-    startTrail() {
-        if (this._emitting) return;
+    // `parent` MUST be a stable node that does not move/rotate/scale along with whatever this
+    // trail is attached to (e.g. a top-level flight layer) - never this node itself.
+    startTrail(parent: Node) {
+        if (!parent || parent === this.node || parent.isChildOf(this.node)) {
+            console.warn(`TrailRenderer2D: refusing bad trailParent "${parent?.name}" on "${this.node.name}".`);
+            return;
+        }
+        this._ensureGraphics(parent);
+
         this._emitting = true;
-        this._lastPos.set(this.node.worldPosition);
+        this._lastSpawnPos.set(this.node.worldPosition);
+        this._spawnDot(this.node.worldPosition);
+
+        if (this._debugStreak) {
+            this._debugStreak.enabled = true;
+            this._debugStreak.reset();
+        }
     }
 
     stopTrail() {
         this._emitting = false;
+        if (this._debugStreak) this._debugStreak.enabled = false;
     }
 
-    /** Removes all currently visible segments immediately. */
-    clear() {
-        for (const seg of this._active) {
-            Tween.stopAllByTarget(seg);
-            Tween.stopAllByTarget(seg.getComponent(Sprite));
-            this._recycle(seg);
-        }
-        this._active.length = 0;
+    /** Alias for stopTrail() - dots already fade out on their own over lifeTime once stopped. */
+    fadeOutAll() {
+        this.stopTrail();
     }
 
-    update() {
-        if (!this._emitting || !this.spriteFrame) return;
-
-        const worldPos = this.node.worldPosition;
-        if (Vec3.distance(worldPos, this._lastPos) >= this.minDistance) {
-            this._lastPos.set(worldPos);
-            this._spawnSegment(worldPos);
+    private _ensureGraphics(parent: Node) {
+        if (!this._graphicsNode) {
+            this._graphicsNode = new Node('TrailGraphics');
+            const uiTransform = this._graphicsNode.addComponent(UITransform);
+            // A UITransform defaults to a (0,0) contentSize, which Cocos' UI renderer can treat
+            // as "nothing to draw here" and cull entirely regardless of what Graphics actually
+            // draws - give it a large, generous box so it's never culled. Anchored at (0,0) so
+            // the box doesn't shift the Graphics node's own origin (where circle() coordinates
+            // are relative to).
+            uiTransform.setContentSize(4000, 4000);
+            uiTransform.setAnchorPoint(0.5, 0.5);
+            this._graphics = this._graphicsNode.addComponent(Graphics);
+        }
+        if (this._graphicsNode.parent !== parent) {
+            this._graphicsNode.setParent(parent);
+            this._graphicsNode.setPosition(0, 0, 0);
+            this._graphicsNode.setSiblingIndex(-1);
         }
     }
 
-    private _spawnSegment(worldPos: Readonly<Vec3>) {
-        if (!this.trailParent) return;
+    lateUpdate(dt: number) {
+        this._elapsed += dt;
 
-        const seg = this._getSegmentNode();
-        const sprite = seg.getComponent(Sprite);
-        const uiTransform = seg.getComponent(UITransform);
-
-        if (this.segmentSize > 0) {
-            sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-            uiTransform.setContentSize(this.segmentSize, this.segmentSize);
-        } else {
-            sprite.sizeMode = Sprite.SizeMode.TRIMMED;
-        }
-        sprite.spriteFrame = this.spriteFrame;
-        sprite.color = this.startColor.clone();
-
-        seg.setParent(this.trailParent);
-        seg.setWorldPosition(worldPos as Vec3);
-        seg.angle = this.node.angle;
-        seg.setScale(this.startScale, this.startScale, 1);
-        seg.active = true;
-
-        this._active.push(seg);
-        if (this._active.length > this.maxSegments) {
-            const oldest = this._active.shift();
-            Tween.stopAllByTarget(oldest);
-            Tween.stopAllByTarget(oldest.getComponent(Sprite));
-            this._recycle(oldest);
+        if (this._emitting) {
+            const worldPos = this.node.worldPosition;
+            if (Vec3.distance(worldPos, this._lastSpawnPos) >= this.minDistance) {
+                this._lastSpawnPos.set(worldPos);
+                this._spawnDot(worldPos);
+            }
         }
 
-        tween(seg)
-            .to(this.lifeTime, { scale: new Vec3(this.endScale, this.endScale, 1) })
-            .start();
-
-        tween(sprite)
-            .to(this.lifeTime, { color: this.endColor })
-            .call(() => {
-                const idx = this._active.indexOf(seg);
-                if (idx >= 0) this._active.splice(idx, 1);
-                this._recycle(seg);
-            })
-            .start();
+        if (this._dots.length > 0) {
+            this._redraw();
+        }
     }
 
-    private _getSegmentNode(): Node {
-        if (this._pool.size() > 0) return this._pool.get();
+    private _spawnDot(worldPos: Readonly<Vec3>) {
+        if (!this._graphicsNode) return;
 
-        const node = new Node('TrailSegment');
-        node.addComponent(UITransform);
-        node.addComponent(Sprite);
-        return node;
+        const local = new Vec3();
+        this._graphicsNode.inverseTransformPoint(local, worldPos as Vec3);
+        this._dots.push({
+            x: local.x,
+            y: local.y,
+            spawnTime: this._elapsed,
+            radius: this.randomRange(this.dotRadiusMin, this.dotRadiusMax),
+        });
+        if (this._dots.length > this.maxDots) {
+            this._dots.shift();
+        }
     }
 
-    private _recycle(node: Node) {
-        Tween.stopAllByTarget(node);
-        Tween.stopAllByTarget(node.getComponent(Sprite));
-        node.removeFromParent();
-        this._pool.put(node);
+    private _redraw() {
+        const g = this._graphics;
+        if (!g) return;
+
+        g.clear();
+        for (let i = this._dots.length - 1; i >= 0; i--) {
+            const dot = this._dots[i];
+            const age = this._elapsed - dot.spawnTime;
+            if (age >= this.lifeTime) {
+                this._dots.splice(i, 1);
+                continue;
+            }
+            const t = age / this.lifeTime;
+            const alpha = Math.round((1 - t) * this.dotColor.a);
+            const radius = dot.radius * (1 - t * 0.6);
+            g.fillColor = new Color(this.dotColor.r, this.dotColor.g, this.dotColor.b, alpha);
+            g.circle(dot.x, dot.y, radius);
+            g.fill();
+        }
+    }
+
+    private randomRange(min: number, max: number): number {
+        return min + Math.random() * (max - min);
     }
 }
