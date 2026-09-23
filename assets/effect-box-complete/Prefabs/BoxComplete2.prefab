@@ -55,12 +55,12 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 1,
-      "y": 1,
+      "x": 0.5,
+      "y": 0.5,
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -110,7 +110,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -178,10 +178,10 @@
     "lifeVar": 0.2,
     "angle": 90,
     "angleVar": 180,
-    "startSize": 50,
-    "startSizeVar": 30,
-    "endSize": 100,
-    "endSizeVar": 50,
+    "startSize": 30,
+    "startSizeVar": 20,
+    "endSize": 30,
+    "endSizeVar": 20,
     "startSpin": 0,
     "startSpinVar": 20,
     "endSpin": 60,
@@ -315,7 +315,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -520,7 +520,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -632,7 +632,7 @@
     "_custom": true,
     "_file": null,
     "_spriteFrame": {
-      "__uuid__": "479593c5-3ef9-4708-8195-1969444f5e18@f9941",
+      "__uuid__": "c016785c-4c61-4d37-86d8-74ebd72c580d@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_totalParticles": 10,
@@ -725,7 +725,7 @@
       "z": 1
     },
     "_mobility": 0,
-    "_layer": 1073741824,
+    "_layer": 33554432,
     "_euler": {
       "__type__": "cc.Vec3",
       "x": 0,
@@ -926,7 +926,6 @@
       "__id__": 0
     },
     "fileId": "8bzRLJGdxEUq2ztEjx1QXQ",
-    "instance": null,
     "targetOverrides": null
   }
 ]

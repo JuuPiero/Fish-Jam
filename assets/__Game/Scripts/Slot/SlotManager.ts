@@ -15,6 +15,8 @@ export class SlotManager extends Component {
     private _slots: Node[] = [];
     // Parallel to _slots: the fish waiting in that slot, or null if it's free.
     private _occupants: (Fish | null)[] = [];
+    // Fish whose slot has been reserved but whose landing animation has not finished yet.
+    private _pendingParkArrivals = new Set<Fish>();
 
 
 
@@ -26,6 +28,7 @@ export class SlotManager extends Component {
         }
         this._slots = [];
         this._occupants = [];
+        this._pendingParkArrivals.clear();
 
         const slotPrefab = ServiceLocator.get(GameConfigSA).slotPrefab;
 
@@ -43,14 +46,22 @@ export class SlotManager extends Component {
         return this._occupants.some(fish => fish === null);
     }
 
+    hasPendingParkArrivals(): boolean {
+        return this._pendingParkArrivals.size > 0;
+    }
+
     // Parks a fish in the first free slot. Returns false if the bench is full.
-    park(fish: Fish, flyLayer: Node): boolean {
+    park(fish: Fish, flyLayer: Node, onArrive?: () => void): boolean {
         const index = this._occupants.indexOf(null);
         if (index === -1) {
             return false;
         }
         this._occupants[index] = fish;
-        fish.flyToSlot(this._slots[index], flyLayer);
+        this._pendingParkArrivals.add(fish);
+        fish.flyToSlot(this._slots[index], flyLayer, () => {
+            this._pendingParkArrivals.delete(fish);
+            onArrive?.();
+        });
         return true;
     }
 
@@ -62,6 +73,7 @@ export class SlotManager extends Component {
         }
         const fish = this._occupants[index];
         this._occupants[index] = null;
+        this._pendingParkArrivals.delete(fish);
         return fish;
     }
 }

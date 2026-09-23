@@ -21,6 +21,7 @@ export class GameManager extends Component {
     @property(LevelManager) levelManager: LevelManager = null;
     @property({ type: Node, tooltip: 'Top-level node (e.g. the canvas root) fish are reparented onto while flying to a slot/order' })
     flyLayer: Node = null;
+    private _isGameOver = false;
     protected onLoad(): void {
         ServiceLocator.register(GameManager, this)
         ServiceLocator.register(LevelManager, this.levelManager)
@@ -52,19 +53,30 @@ export class GameManager extends Component {
     }
 
     onNewGame = () => {
+        this._isGameOver = false;
+        this.progress = 0;
+        this.progressTracked = { quarter: false, half: false, threeQuarter: false };
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
     }
 
     onWinGame = () => {
+        if (this._isGameOver) {
+            return;
+        }
+        this._isGameOver = true;
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_SOLVED)
-        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen')
+        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', {isWin: true})
     }
 
     onLoseGame = () => {
+        if (this._isGameOver) {
+            return;
+        }
+        this._isGameOver = true;
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_FAILED)
-        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen')
+        ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', {isWin: false})
     }
 
     isPlayMusic = true;
@@ -119,6 +131,9 @@ export class GameManager extends Component {
     }
 
     onFishClicked = (fish: Fish) => {
+        if (this._isGameOver) {
+            return;
+        }
         fish.setInteractable(false);
 
         // Detach from its bubble first (this may pop the bubble if it was the last fish in it)
@@ -166,10 +181,15 @@ export class GameManager extends Component {
             return;
         }
 
-        // Reserve the slot first: checking before park() would miss the moment this fish fills
-        // the final available slot, leaving a full bench without triggering the lose state.
-        const parked = slotManager.park(fish, this.flyLayer);
-        if (!parked || !slotManager.hasFreeSlot()) {
+        // Like FoodJam, reserve immediately so rapid taps cannot claim the same slot, but only
+        // declare defeat after every currently reserved fish has visibly landed. A matching
+        // order may open while they are flying and free a reserved slot in time.
+        const parked = slotManager.park(fish, this.flyLayer, () => {
+            if (!slotManager.hasPendingParkArrivals() && !slotManager.hasFreeSlot()) {
+                EventBus.emit(GameEvents.LEVEL_LOSE);
+            }
+        });
+        if (!parked) {
             EventBus.emit(GameEvents.LEVEL_LOSE);
             return;
         }

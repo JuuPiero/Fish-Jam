@@ -162,6 +162,9 @@ export class Bubble extends Component {
         this._bounceTween?.stop();
         this.stopIdleBounce();
         this._wobbleTween?.stop();
+        // Keep the burst beside other bubbles (same Canvas/camera and draw layer), but not as
+        // a child of this bubble because this root is destroyed when the pop animation ends.
+        VFXManager.instance?.spawnBubbleEffect(this.node.worldPosition, this.node.parent);
         AudioManager.instance.playOneShot('Pop')
       
 

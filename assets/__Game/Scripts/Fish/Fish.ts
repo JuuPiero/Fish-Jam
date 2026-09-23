@@ -122,7 +122,10 @@ export class Fish extends Component {
 
     // A waiting slot uses the default curved path and a short vertical approach before landing.
     flyToSlot(slot: Node, flyLayer: Node, onArrive?: () => void) {
-        this._flyTo(slot, flyLayer, null, onArrive);
+        this._flyTo(slot, flyLayer, null, () => {
+            this.landInSlot(slot);
+            onArrive?.();
+        });
     }
 
     // Claims the next empty placeholder on `order` right away (so a second matching fish can't
@@ -136,10 +139,23 @@ export class Fish extends Component {
         // lidPos is the order's entry waypoint. Supplying an empty path still deliberately
         // disables the waiting-slot approach, matching Unity's entryPath behavior.
         this._flyTo(slotPos, flyLayer, order.lidPos ? [order.lidPos] : [], () => {
+            this.landInSlot(slotPos);
             order.fillSlot(slotPos);
             this.node.destroy();
             onArrive?.();
         });
+    }
+
+    // The root canvas is only a temporary flight layer. Once landed, restore ownership to the
+    // destination slot so hierarchy, clipping, and later slot animation stay correct.
+    private landInSlot(slot: Node) {
+        if (!slot?.isValid) {
+            return;
+        }
+        this.node.setParent(slot);
+        this.node.setPosition(Vec3.ZERO);
+        this.node.setScale(Vec3.ONE);
+        this.node.angle = 0;
     }
 
     // Pull the fish onto the flight layer, then follow the same sampled centripetal Catmull-Rom

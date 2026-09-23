@@ -89,13 +89,16 @@ export class OrderManager extends Component {
             return null;
         }
 
+        // Every completed order counts toward level progress. This must happen before checking
+        // the queue: the final visible orders have no replacement, but are still valid matches.
+        EventBus.emit(GameEvents.MATCHED);
+
         const nextId = this._queue.shift();
         if (nextId === undefined) {
             this.orders.splice(index, 1);
             order.node.destroy();
             return null;
         }
-        EventBus.emit(GameEvents.MATCHED);
 
         order.reset(nextId);
         return nextId;
