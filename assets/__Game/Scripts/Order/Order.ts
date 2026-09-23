@@ -3,6 +3,8 @@ import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
 import { Fish } from '../Fish/Fish';
 import { VFXManager } from '../VFXManager';
+import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
+import { GameEvents } from '../GameEvents';
 const { ccclass, property } = _decorator;
 
 @ccclass('Order')
@@ -125,6 +127,11 @@ export class Order extends Component {
             .call(() => {
                 this._popTween = null;
                 this._isPoppingIn = false;
+                // Only now is it actually safe to route a fish here (see isFullyClaimed) -
+                // GameManager listens for this to pull any bench-waiting fish matching this id,
+                // regardless of whether OrderManager reset this order directly or reactivated it
+                // from being hidden as a pending duplicate.
+                EventBus.emit(GameEvents.ORDER_READY, this);
             })
             .start();
 

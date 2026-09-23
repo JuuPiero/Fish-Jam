@@ -7,6 +7,7 @@ import { ServiceLocator } from '../../_iKame/Scripts/ServiceLocator';
 import { ETrackingEvent, TrackingManager } from '../../_iKame/Scripts/TrackingManager';
 import { FishConfigSA } from './Data/FishConfigSA';
 import { Fish } from './Fish/Fish';
+import { Order } from './Order/Order';
 import { Bubble } from './Bubble/Bubble';
 import { AudioManager } from '../../_iKame/Scripts/Audio/AudioManager';
 import { PREVIEW } from 'cc/env';
@@ -34,6 +35,7 @@ export class GameManager extends Component {
         EventBus.on(GameEvents.LEVEL_LOSE, this.onLoseGame);
         EventBus.on(GameEvents.MATCHED, this.onProgress);
         EventBus.on(GameEvents.FISH_CLICKED, this.onFishClicked);
+        EventBus.on(GameEvents.ORDER_READY, this.onOrderReady);
     }
 
     protected onDisable(): void {
@@ -42,6 +44,7 @@ export class GameManager extends Component {
         EventBus.off(GameEvents.LEVEL_LOSE, this.onLoseGame);
         EventBus.off(GameEvents.MATCHED, this.onProgress);
         EventBus.off(GameEvents.FISH_CLICKED, this.onFishClicked);
+        EventBus.off(GameEvents.ORDER_READY, this.onOrderReady);
     }
 
     protected start(): void {
@@ -155,6 +158,23 @@ export class GameManager extends Component {
         this.routeFish(fish);
     }
 
+    // An order just got a fresh id and finished settling its pop-in animation (see
+    // Order.playResetPop) - whether OrderManager reset it directly on completion or reactivated
+    // it from being hidden as a pending duplicate, it's now actually safe to route a fish here.
+    // Pull every fish already waiting on the bench for this id, not just one - the order has
+    // room for up to 3, and a bench could easily be holding 2 or 3 of a kind that only just
+    // became orderable.
+    onOrderReady = (order: Order) => {
+        const { slotManager } = this.levelManager;
+        while (!order.isFullyClaimed) {
+            const waitingFish = slotManager.takeMatching(order.id);
+            if (!waitingFish) {
+                break;
+            }
+            this.routeFish(waitingFish);
+        }
+    }
+
     // Sends `fish` to a matching order if one wants it, otherwise parks it on the waiting bench
     // (or ends the level if the bench is full). Also used to chain a waiting fish onward once a
     // freshly-spawned order turns out to want it.
@@ -167,29 +187,10 @@ export class GameManager extends Component {
                 if (!order.isComplete) {
                     return;
                 }
-                const nextId = orderManager.completeOrder(order);
-                if (nextId === null) {
-                    return;
-                }
-                // completeOrder() already reset the order's claim/deliver counts synchronously
-                // (so a second matching fish can't slip in mid-check), but its shrink-then-pop
-                // visual (playResetPop) is still mid-animation for popDuration seconds. A
-                // waiting fish lands by reparenting into one of the order's slots, which are
-                // themselves descendants of the order's own node - sending it off right away
-                // would land it while still being scaled/rotated by that pop tween. Wait for the
-                // pop to finish before pulling any waiting fish toward this order.
-                this.scheduleOnce(() => {
-                    // Pull every fish already waiting on the bench for this id, not just one -
-                    // the order has room for up to 3, and a bench could easily be holding 2 or 3
-                    // of a kind that only just became orderable.
-                    while (!order.isFullyClaimed) {
-                        const waitingFish = slotManager.takeMatching(nextId);
-                        if (!waitingFish) {
-                            break;
-                        }
-                        this.routeFish(waitingFish);
-                    }
-                }, order.popDuration);
+                // Reassigns this order's id (or hides it as a pending duplicate) and, either
+                // way, eventually fires ORDER_READY once whichever order actually ends up
+                // showing that next id has settled its pop-in - see onOrderReady.
+                orderManager.completeOrder(order);
             });
             return;
         }
