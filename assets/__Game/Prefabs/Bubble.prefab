@@ -458,7 +458,7 @@
     "fishes": [],
     "fishGapMin": -2,
     "fishGapMax": 10,
-    "bubbleEdgePaddingMin": 5,
+    "bubbleEdgePaddingMin": 10,
     "bubbleEdgePaddingMax": 50,
     "bounceSpeedThreshold": 5,
     "buoyancyScale": 1.6,
