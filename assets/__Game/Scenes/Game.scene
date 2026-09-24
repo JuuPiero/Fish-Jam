@@ -1562,6 +1562,7 @@
     },
     "spacing": 220,
     "count": 4,
+    "relayoutDuration": 0.25,
     "orders": [],
     "_id": "132CoMdDNPAqMOlPtJMQAJ"
   },

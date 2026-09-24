@@ -783,7 +783,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -105.408,
+      "y": -109.047,
       "z": 0
     },
     "_lrot": {
@@ -795,8 +795,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 1,
-      "y": 1,
+      "x": 1.2,
+      "y": 1.2,
       "z": 1
     },
     "_mobility": 0,
@@ -845,8 +845,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 0.4,
-      "y": 0.4,
+      "x": 0.5,
+      "y": 0.5,
       "z": 1
     },
     "_mobility": 0,
@@ -915,7 +915,7 @@
     },
     "defaultSkin": "sprite_0000",
     "defaultAnimation": "<None>",
-    "_premultipliedAlpha": true,
+    "_premultipliedAlpha": false,
     "_timeScale": 1,
     "_preCacheMode": 0,
     "_cacheMode": 0,
@@ -968,7 +968,7 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 31.54,
+      "x": 35.078,
       "y": 3.033,
       "z": 0
     },
