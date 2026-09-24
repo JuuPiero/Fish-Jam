@@ -180,8 +180,10 @@ export class TutorialController extends Component {
             && pos.y >= rect.y && pos.y <= rect.y + rect.height;
     }
 
-    // First on-screen fish, among those still waiting in a bubble, whose id currently has an
-    // unclaimed order.
+    // Highest on-screen fish (largest world Y), among those still waiting in a bubble, whose id
+    // currently has an unclaimed order. Picking the topmost one - rather than just the first
+    // found - gives a consistent, prominent target now that orders themselves keep moving along
+    // the belt, so "the first match iterated" would otherwise jump around fairly arbitrarily.
     private findFishWithOrder(): Fish | null {
         const levelManager = ServiceLocator.get(LevelManager);
         const orderManager = levelManager?.orderManager;
@@ -190,17 +192,24 @@ export class TutorialController extends Component {
             return null;
         }
 
+        let best: Fish | null = null;
+        let bestY = -Infinity;
         for (const bubbleNode of bubbleManager.node.children) {
             const bubble = bubbleNode.getComponent(Bubble);
             if (!bubble) {
                 continue;
             }
             for (const fish of bubble.fishes) {
-                if (orderManager.findMatchingOrder(fish.id) && this.isInView(fish.node)) {
-                    return fish;
+                if (!orderManager.findMatchingOrder(fish.id) || !this.isInView(fish.node)) {
+                    continue;
+                }
+                const y = fish.node.worldPosition.y;
+                if (y > bestY) {
+                    bestY = y;
+                    best = fish;
                 }
             }
         }
-        return null;
+        return best;
     }
 }
