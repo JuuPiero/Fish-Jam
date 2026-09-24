@@ -183,13 +183,16 @@ export class GameManager extends Component {
 
         const order = orderManager.findMatchingOrder(fish.id);
         if (order) {
+            // Freeze the belt for the whole flight - Fish.flyToOrder() snapshots this order's
+            // slot position once at the start, so it must not keep scrolling underneath the fish.
+            orderManager.beginFlight();
             fish.flyToOrder(order, this.flyLayer, () => {
+                orderManager.endFlight();
                 if (!order.isComplete) {
                     return;
                 }
-                // Reassigns this order's id (or hides it as a pending duplicate) and, either
-                // way, eventually fires ORDER_READY once whichever order actually ends up
-                // showing that next id has settled its pop-in - see onOrderReady.
+                // Reassigns this order to the next queued id, which eventually fires
+                // ORDER_READY once its pop-in settles - see onOrderReady.
                 orderManager.completeOrder(order);
             });
             return;
