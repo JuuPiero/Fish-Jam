@@ -26,13 +26,17 @@ export class TutorialController extends Component {
     @property({ tooltip: 'Seconds between checks while waiting for bubbles to settle' })
     settlePollInterval: number = 0.15;
 
-    // How many consecutive calm polls in a row before we trust the bubbles are actually done
-    // rising, not just momentarily calm between jostles.
-    private static readonly SETTLE_STREAK_REQUIRED = 3;
+    // Bubbles packed under buoyancy can wedge into a stable arch and sit at ~0 velocity for a
+    // while before a nudge frees them and they keep rising (see Bubble.ts's own notes on
+    // granular jamming) - a short calm streak reads that temporary stall as "done" and points at
+    // a fish that's about to move again. Require a much longer stretch of continuous calm so a
+    // real jam (which does eventually break free) has time to prove itself not actually settled.
+    @property({ tooltip: 'Seconds of CONTINUOUS calm required before bubbles are trusted to be fully settled (not just momentarily jammed)' })
+    requiredCalmDuration: number = 1.5;
 
     private _pointTween: Tween<Node> | null = null;
     private _waitingForSettle = false;
-    private _settledStreak = 0;
+    private _calmDuration = 0;
     // The hint is only ever for the very first fish of a level - once the player taps any fish
     // (presumably having gotten the idea), it's done for the rest of that level.
     private _done = false;
@@ -76,7 +80,7 @@ export class TutorialController extends Component {
     }
 
     private waitForSettleThenPoint() {
-        this._settledStreak = 0;
+        this._calmDuration = 0;
         if (this._waitingForSettle) {
             return;
         }
@@ -89,12 +93,12 @@ export class TutorialController extends Component {
             this.unschedule(this.tryPoint);
             this._waitingForSettle = false;
         }
-        this._settledStreak = 0;
+        this._calmDuration = 0;
     }
 
     private tryPoint = () => {
-        this._settledStreak = this.allBubblesSettled() ? this._settledStreak + 1 : 0;
-        if (this._settledStreak < TutorialController.SETTLE_STREAK_REQUIRED) {
+        this._calmDuration = this.allBubblesSettled() ? this._calmDuration + this.settlePollInterval : 0;
+        if (this._calmDuration < this.requiredCalmDuration) {
             return;
         }
         this.stopWaitingForSettle();

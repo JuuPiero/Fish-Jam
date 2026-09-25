@@ -138,8 +138,8 @@
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
-      "x": 0.5473722905381097,
-      "y": 0.466872048544717
+      "x": 0.4,
+      "y": 0.5
     },
     "_id": ""
   },
@@ -201,8 +201,6 @@
       "__id__": 0
     },
     "fileId": "feRfFehRFKQqjroaeS6Ajx",
-    "instance": null,
-    "targetOverrides": null,
     "nestedPrefabInstanceRoots": null
   },
   {

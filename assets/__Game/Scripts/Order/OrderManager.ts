@@ -22,8 +22,11 @@ export class OrderManager extends Component {
     @property({ type: Node, tooltip: 'Marks where an order wraps back around to the right side of the belt - drag this to wherever "off-screen left" should be' })
     leftLimitNode: Node = null;
 
-    @property({ tooltip: 'How many of the belt\'s leftmost slot positions (spacing apart, starting at leftLimitNode) count as "in view"/matchable - the rest are still queued up further right' })
-    visibleSlotCount: number = 4;
+    @property({ type: Node, tooltip: 'Left edge of the zone an order must be within for fish to be able to fly to it - independent of leftLimitNode (the belt wrap point)' })
+    interactableLeftNode: Node = null;
+
+    @property({ type: Node, tooltip: 'Right edge of the zone an order must be within for fish to be able to fly to it' })
+    interactableRightNode: Node = null;
 
     @property({type: [Order], readonly: true}) orders: Order[] = []
 
@@ -39,10 +42,12 @@ export class OrderManager extends Component {
     // wrap instead of snapping to some fixed "start" position.
     private _beltLength = 0;
 
-    // leftLimitNode's X, converted once into orderContainer's local space so the per-frame belt
-    // math below stays simple local-X arithmetic instead of a world<->local conversion for every
-    // order every frame.
+    // leftLimitNode/interactableLeftNode/interactableRightNode's X, converted once into
+    // orderContainer's local space so the per-frame belt math below stays simple local-X
+    // arithmetic instead of a world<->local conversion for every order every frame.
     private _leftLimit = 0;
+    private _interactableLeft = 0;
+    private _interactableRight = 0;
 
     // How many fish are currently mid-flight toward an order. The belt freezes entirely while
     // this is above 0 - Fish.flyToOrder() snapshots its destination once at the start of the
@@ -70,6 +75,13 @@ export class OrderManager extends Component {
         const leftLocal = new Vec3();
         this.orderContainer.inverseTransformPoint(leftLocal, this.leftLimitNode.worldPosition);
         this._leftLimit = leftLocal.x;
+
+        const interactableLeftLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(interactableLeftLocal, this.interactableLeftNode.worldPosition);
+        this._interactableLeft = interactableLeftLocal.x;
+        const interactableRightLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(interactableRightLocal, this.interactableRightNode.worldPosition);
+        this._interactableRight = interactableRightLocal.x;
 
         const orderPrefab = ServiceLocator.get(GameConfigSA).orderPrefab;
 
@@ -151,11 +163,12 @@ export class OrderManager extends Component {
         }
     }
 
-    // True for whichever slot position an order currently sits at - the leftmost visibleSlotCount
-    // positions (0, 1, 2, 3 spacings from leftLimitNode) count as "in view"/matchable; anything
-    // further right is still queued up off-screen, however close it visually looks to arriving.
+    // True while an order sits between interactableLeftNode and interactableRightNode - the only
+    // zone fish are allowed to fly into it from. This is independent of leftLimitNode (which only
+    // controls where an order wraps back around the belt), so it can be a narrower window
+    // wherever on screen actually makes sense for gameplay.
     private isInView(x: number): boolean {
-        return x >= this._leftLimit && x < this._leftLimit + this.visibleSlotCount * this.spacing;
+        return x >= this._interactableLeft && x <= this._interactableRight;
     }
 
     // The first order asking for this fish id that still has an unclaimed slot AND is currently
