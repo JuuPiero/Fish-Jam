@@ -2663,7 +2663,7 @@
       "__id__": 24
     },
     "bubbleGap": 20,
-    "moveType": 2,
+    "moveType": 1,
     "speed": 40,
     "rows": 3,
     "limitLeft": {
@@ -2799,7 +2799,7 @@
     "_prefab": null,
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": -1679.432,
+      "x": -1341.744,
       "y": 0,
       "z": 0
     },
@@ -2902,7 +2902,7 @@
     "_prefab": null,
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 1629.905,
+      "x": 1328.237,
       "y": 0,
       "z": 0
     },
@@ -4565,7 +4565,7 @@
         "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 0,
+    "levelIndex": 1,
     "currentLevel": null,
     "orderManager": {
       "__id__": 49

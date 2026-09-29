@@ -95,13 +95,15 @@ export class BubbleManager extends Component {
             return;
         }
 
+        // Every bubble in a moving layout shares one loop. Giving each radius its own loop
+        // makes bubbles wrap at different moments and gradually destroys the even spacing.
+        const limits = this.getMoveLimits();
+        if (!limits || limits.max <= limits.min) {
+            return;
+        }
+
         for (const movingBubble of this._movingBubbles) {
             if (!movingBubble.node.isValid) {
-                continue;
-            }
-
-            const limits = this.getMoveLimits(movingBubble.bubble.radius);
-            if (!limits || limits.max <= limits.min) {
                 continue;
             }
 
@@ -154,10 +156,10 @@ export class BubbleManager extends Component {
 
         const laneRadii = lanes.map(lane => Math.max(...lane.map(item => item.bubble.radius)));
         const crossAxisPositions = this.getCrossAxisPositions(laneRadii, spawnPos);
+        const limits = this.getMoveLimits();
 
         lanes.forEach((lane, laneIndex) => {
             lane.forEach((movingBubble, indexInLane) => {
-                const limits = this.getMoveLimits(movingBubble.bubble.radius);
                 // Start at the matching end of the lane, so an initially right-to-left (or
                 // top-to-bottom) bubble really does begin by travelling in that direction.
                 const positionIndex = movingBubble.direction > 0 ? indexInLane : lane.length - 1 - indexInLane;
@@ -210,7 +212,7 @@ export class BubbleManager extends Component {
         return positions;
     }
 
-    private getMoveLimits(radius: number): { min: number, max: number } | null {
+    private getMoveLimits(): { min: number, max: number } | null {
         const start = this.moveType === MoveType.Horizontal ? this.limitLeft : this.limitBottom;
         const end = this.moveType === MoveType.Horizontal ? this.limitRight : this.limitTop;
         if (!start || !end) {
@@ -220,8 +222,8 @@ export class BubbleManager extends Component {
         const startValue = this.moveType === MoveType.Horizontal ? start.worldPosition.x : start.worldPosition.y;
         const endValue = this.moveType === MoveType.Horizontal ? end.worldPosition.x : end.worldPosition.y;
         return {
-            min: Math.min(startValue, endValue) + radius,
-            max: Math.max(startValue, endValue) - radius,
+            min: Math.min(startValue, endValue),
+            max: Math.max(startValue, endValue),
         };
     }
 
