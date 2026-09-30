@@ -24,6 +24,12 @@ export class GameManager extends Component {
     @property({ type: Node, tooltip: 'Top-level node (e.g. the canvas root) fish are reparented onto while flying to a slot/order' })
     flyLayer: Node = null;
     private _isGameOver = false;
+
+    
+    public get IsGameOver() : boolean {
+        return this._isGameOver;
+    }
+    
     protected onLoad(): void {
         ServiceLocator.register(GameManager, this)
         ServiceLocator.register(LevelManager, this.levelManager)
@@ -56,6 +62,7 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.DISPLAYED);
         PlayableAdsManager.SetupLinkStore();
         EventBus.emit(GameEvents.NEW_LEVEL);
+        AudioManager.instance.playMusic('BGMFish')
     }
 
     onNewGame = () => {
@@ -99,7 +106,7 @@ export class GameManager extends Component {
                  ServiceLocator.get(TutorialController).hideHand()
             }
             else {
-                AudioManager.instance.playMusic('BGM')
+                AudioManager.instance.playMusic('BGMFish')
                 this.isPlayMusic = true;
                 
             }

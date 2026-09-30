@@ -1,4 +1,4 @@
-import { _decorator, Collider2D, Component, Enum, instantiate, Node, Prefab, RigidBody2D, UITransform } from 'cc';
+import { _decorator, Collider2D, Component, Enum, instantiate, Node, Prefab, RigidBody2D, tween, UITransform, Vec3 } from 'cc';
 import { LevelData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
@@ -20,6 +20,7 @@ interface MovingBubble {
     baseCrossAxis: number;
     bobPhase: number;
     radius: number;
+    axisPosition: number;
 }
 
 interface MovingLane {
@@ -43,6 +44,8 @@ export class BubbleManager extends Component {
 
     @property({ type: Enum(MoveType) }) moveType: MoveType = MoveType.None;
     @property speed: number = 20;
+    @property({ tooltip: 'Seconds bubbles take to slide into a freed slot; all lane movement pauses until this finishes' })
+    reflowPauseDuration: number = 0.2;
     @property padding: number = 50; // horizontal: top and bottom - vertical: left and right
 
     @property({ group: "Horizontal" }) rows: number = 5;
@@ -60,12 +63,18 @@ export class BubbleManager extends Component {
     private _movingBubbles: MovingBubble[] = [];
     private _movingLanes: MovingLane[] = [];
     private _moveTime = 0;
+    private _spawnGeneration = 0;
+    private _reflowTweenCount = 0;
+    private _reflowGeneration = 0;
 
 
-    initialize(levelData: LevelData) {
+    initialize(levelData: LevelData, onSpawnComplete?: () => void) {
+        const spawnGeneration = ++this._spawnGeneration;
         this._movingBubbles = [];
         this._movingLanes = [];
         this._moveTime = 0;
+        this._reflowTweenCount = 0;
+        this._reflowGeneration++;
         for (const child of this.node.children.slice()) {
             child.removeFromParent();
             child.destroy();
@@ -75,7 +84,13 @@ export class BubbleManager extends Component {
         const spawnPos = this.spawnPosNode.worldPosition;
 
         if (this.moveType !== MoveType.None) {
-            this.spawnMovingBubbles(levelData, bubblePrefab, spawnPos);
+            this.scheduleOnce(() => {
+                if (spawnGeneration !== this._spawnGeneration || !this.node.isValid) {
+                    return;
+                }
+                this.spawnMovingBubbles(levelData, bubblePrefab, spawnPos);
+                onSpawnComplete?.();
+            }, 0);
             return;
         }
 
@@ -110,14 +125,28 @@ export class BubbleManager extends Component {
             bubbleNode.setWorldPosition(x, y, spawnPos.z);
             index++;
         }
+        onSpawnComplete?.();
     }
 
     protected update(deltaTime: number): void {
-        if (this.moveType === MoveType.None || this.speed <= 0) {
+        if (this.moveType === MoveType.None) {
             return;
         }
+
+        // A reflow owns the positions while bubbles slide into their newly freed slots. Do not
+        // advance the lane or sine-wave at the same time, otherwise the two motions fight and
+        // make the rows visibly jitter.
+        if (this._reflowTweenCount > 0) {
+            return;
+        }
+        if (this.reflowAfterDestroyedBubbles()) {
+            return;
+        }
+        if (this.speed <= 0) {
+            return;
+        }
+
         this._moveTime += deltaTime;
-        this.reflowAfterDestroyedBubbles();
 
         for (const movingBubble of this._movingBubbles) {
             if (!movingBubble.node.isValid || movingBubble.max <= movingBubble.min) {
@@ -131,28 +160,8 @@ export class BubbleManager extends Component {
                 movingBubble.min,
                 movingBubble.max,
             );
-
-            if (this.moveType === MoveType.Horizontal) {
-                // Phase comes from X as well as time, so the bubbles form one travelling sine
-                // wave across a row instead of every bubble rising and falling together.
-                const bobOffset = Math.sin(
-                    next / Math.max(1, this.bobWavelength) * Math.PI * 2
-                    + this._moveTime * this.bobFrequency * Math.PI * 2
-                    + movingBubble.bobPhase,
-                )
-                    * this.bobAmplitude;
-                movingBubble.node.setWorldPosition(next, movingBubble.baseCrossAxis + bobOffset, position.z);
-            } else {
-                // Same travelling-wave treatment for vertical lanes: Y drives the sine phase
-                // and the bubble shifts gently along X.
-                const waveOffset = Math.sin(
-                    next / Math.max(1, this.waveLength) * Math.PI * 2
-                    + this._moveTime * this.waveFrequency * Math.PI * 2
-                    + movingBubble.bobPhase,
-                )
-                    * this.waveAmplitude;
-                movingBubble.node.setWorldPosition(movingBubble.baseCrossAxis + waveOffset, next, position.z);
-            }
+            movingBubble.axisPosition = next;
+            movingBubble.node.setWorldPosition(this.getMovingBubbleWorldPosition(movingBubble, next, position.z));
         }
     }
 
@@ -196,6 +205,7 @@ export class BubbleManager extends Component {
                 baseCrossAxis: 0,
                 bobPhase: laneIndex * Math.PI,
                 radius: 0,
+                axisPosition: 0,
             };
             lanes[laneIndex].push(movingBubble);
             this._movingBubbles.push(movingBubble);
@@ -232,6 +242,7 @@ export class BubbleManager extends Component {
                 const axisPosition = limits.min + (limits.max - limits.min) * (positionIndex / lane.length);
                 movingBubble.min = limits.min;
                 movingBubble.max = limits.max;
+                movingBubble.axisPosition = axisPosition;
                 movingBubble.baseCrossAxis = crossAxisPositions[laneIndex];
 
                 if (this.moveType === MoveType.Horizontal) {
@@ -244,76 +255,213 @@ export class BubbleManager extends Component {
         this._movingLanes = lanes.map(lane => ({ bubbles: lane, direction: lane[0].direction }));
     }
 
-    private reflowAfterDestroyedBubbles() {
+    // Removes invalid bubbles once, then shifts only the bubbles necessary to fill the freed
+    // slots. The previous implementation redistributed every bubble across a new loop length;
+    // that changed the position of whole rows and caused the apparent "jump" on each pop.
+    private reflowAfterDestroyedBubbles(): boolean {
         let hasDestroyedBubble = false;
+        const bounds = this.getContainerBounds();
+        const previousLaneCount = this._movingLanes.length;
         for (const lane of this._movingLanes) {
-            const activeBubbles = lane.bubbles.filter(bubble => bubble.node.isValid);
-            if (activeBubbles.length !== lane.bubbles.length) {
-                lane.bubbles = activeBubbles;
-                hasDestroyedBubble = true;
+            const removedBubbles = lane.bubbles.filter(bubble => !bubble.node.isValid);
+            if (removedBubbles.length === 0) {
+                continue;
             }
+
+            const activeBubbles = lane.bubbles.filter(bubble => bubble.node.isValid);
+            this.compactLaneIntoFreedSlots(lane, activeBubbles, removedBubbles);
+            if (bounds && activeBubbles.length > 0) {
+                this.shortenLaneAfterCompaction(lane, activeBubbles, removedBubbles.length, bounds);
+            }
+            lane.bubbles = activeBubbles;
+            hasDestroyedBubble = true;
         }
         if (!hasDestroyedBubble) {
-            return;
+            return false;
         }
 
-        const activeLanes = this._movingLanes.filter(lane => lane.bubbles.length > 0);
-        this._movingLanes = activeLanes;
+        this._movingLanes = this._movingLanes.filter(lane => lane.bubbles.length > 0);
         this._movingBubbles = [];
-        for (const lane of activeLanes) {
+        for (const lane of this._movingLanes) {
             this._movingBubbles.push(...lane.bubbles);
         }
-        if (activeLanes.length === 0) {
+        if (this._movingLanes.length === 0) {
+            return true;
+        }
+
+        // A regular pop only changes one lane's loop length. Its row/column must stay on its
+        // existing cross-axis position; recalculating every lane here can collapse them onto
+        // one center when the UI bounds are temporarily constrained. Re-layout only after an
+        // entire row/column has actually disappeared.
+        if (this._movingLanes.length !== previousLaneCount) {
+            this.relayoutRemainingLanes(bounds);
+        }
+        this.playReflowAnimation();
+        return true;
+    }
+
+    // Vertical lanes always compact bottom -> top, as bubbles below a gap should rise into it.
+    // Horizontal lanes follow their travel direction: left -> right rows fill from the left and
+    // right -> left rows fill from the right. This covers all alternating-lane combinations.
+    private compactLaneIntoFreedSlots(
+        lane: MovingLane,
+        activeBubbles: MovingBubble[],
+        removedBubbles: MovingBubble[],
+    ) {
+        const compactTowardsPositiveAxis = this.moveType === MoveType.Vertical || lane.direction > 0;
+        const removedSlots = removedBubbles.slice().sort((a, b) => a.axisPosition - b.axisPosition);
+
+        for (const removedBubble of removedSlots) {
+            if (compactTowardsPositiveAxis) {
+                const bubblesBefore = activeBubbles
+                    .filter(bubble => bubble.axisPosition < removedBubble.axisPosition)
+                    .sort((a, b) => a.axisPosition - b.axisPosition);
+                const slots = bubblesBefore.map(bubble => bubble.axisPosition);
+                slots.push(removedBubble.axisPosition);
+                bubblesBefore.forEach((bubble, index) => {
+                    bubble.axisPosition = slots[index + 1];
+                });
+            } else {
+                const bubblesAfter = activeBubbles
+                    .filter(bubble => bubble.axisPosition > removedBubble.axisPosition)
+                    .sort((a, b) => a.axisPosition - b.axisPosition);
+                const slots = [removedBubble.axisPosition, ...bubblesAfter.map(bubble => bubble.axisPosition)];
+                bubblesAfter.forEach((bubble, index) => {
+                    bubble.axisPosition = slots[index];
+                });
+            }
+        }
+    }
+
+    // A lane is a loop. Filling a gap alone only moves that empty slot to its reset edge, where
+    // it becomes visible again after the next wrap. Shorten the loop as well, then space its
+    // remaining bubbles evenly across the shorter loop so there is no hidden "missing slot".
+    private shortenLaneAfterCompaction(
+        lane: MovingLane,
+        activeBubbles: MovingBubble[],
+        removedCount: number,
+        bounds: { xMin: number, xMax: number, yMin: number, yMax: number },
+    ) {
+        const previousBubbleCount = activeBubbles.length + removedCount;
+        const previousMin = lane.bubbles[0].min;
+        const previousMax = lane.bubbles[0].max;
+        const previousRange = previousMax - previousMin;
+        if (previousBubbleCount <= 0 || previousRange <= 0) {
             return;
         }
 
-        const bounds = this.getContainerBounds();
+        const laneRadius = Math.max(...activeBubbles.map(bubble => bubble.radius));
+        const naturalLimits = this.getLaneMoveLimits(bounds, activeBubbles.length, laneRadius);
+        const shortenedRange = Math.min(previousRange, naturalLimits.max - naturalLimits.min);
+        const compactTowardsPositiveAxis = this.moveType === MoveType.Vertical || lane.direction > 0;
+        const min = compactTowardsPositiveAxis ? previousMax - shortenedRange : previousMin;
+        const max = compactTowardsPositiveAxis ? previousMax : previousMin + shortenedRange;
+        const orderedBubbles = activeBubbles.slice().sort((a, b) => a.axisPosition - b.axisPosition);
+
+        orderedBubbles.forEach((bubble, index) => {
+            bubble.min = min;
+            bubble.max = max;
+            // Slots include min and exclude max, matching moveWithWrap: a bubble reaching max
+            // immediately returns to min and keeps the row/column continuously filled.
+            bubble.axisPosition = min + shortenedRange * index / activeBubbles.length;
+        });
+    }
+
+    // Only a completely empty lane changes the number of rows/columns. Re-center those lanes,
+    // restore the alternating direction pattern, and animate the cross-axis change as well.
+    private relayoutRemainingLanes(bounds: { xMin: number, xMax: number, yMin: number, yMax: number } | null) {
         if (!bounds) {
             return;
         }
 
-        const laneRadii = activeLanes.map(lane => Math.max(...lane.bubbles.map(bubble => bubble.radius)));
+        const laneRadii = this._movingLanes.map(lane => Math.max(...lane.bubbles.map(bubble => bubble.radius)));
         const crossAxisPositions = this.getCrossAxisPositions(laneRadii, bounds, this.spawnPosNode.worldPosition);
-
-        activeLanes.forEach((lane, laneIndex) => {
-            const laneRadius = laneRadii[laneIndex];
-            const limits = this.getLaneMoveLimits(bounds, lane.bubbles.length, laneRadius);
-            const oldAxisRange = lane.bubbles[0].max - lane.bubbles[0].min;
-            const getAxis = (bubble: MovingBubble) => this.moveType === MoveType.Horizontal
-                ? bubble.node.worldPosition.x
-                : bubble.node.worldPosition.y;
-            const orderedBubbles = lane.bubbles.slice().sort((a, b) => {
-                const order = getAxis(a) - getAxis(b);
-                return lane.direction > 0 ? order : -order;
-            });
-            const firstBubble = orderedBubbles[0];
-            const oldProgress = oldAxisRange > 0
-                ? (getAxis(firstBubble) - firstBubble.min) / oldAxisRange
-                : 0;
-            const newAxisRange = limits.max - limits.min;
-            const firstAxis = limits.min + Math.max(0, Math.min(1, oldProgress)) * newAxisRange;
-            const spacing = newAxisRange / orderedBubbles.length;
-
-            orderedBubbles.forEach((bubble, index) => {
-                const axis = this.wrapAxisValue(firstAxis + lane.direction * spacing * index, limits.min, limits.max);
-                bubble.min = limits.min;
-                bubble.max = limits.max;
+        this._movingLanes.forEach((lane, laneIndex) => {
+            const direction = this.getLaneDirection(laneIndex);
+            lane.direction = direction;
+            lane.bubbles.forEach(bubble => {
+                bubble.direction = direction;
                 bubble.baseCrossAxis = crossAxisPositions[laneIndex];
-
-                const position = bubble.node.worldPosition;
+                bubble.bobPhase = laneIndex * Math.PI;
                 if (this.moveType === MoveType.Horizontal) {
-                    bubble.node.setWorldPosition(axis, bubble.baseCrossAxis, position.z);
-                } else {
-                    bubble.node.setWorldPosition(bubble.baseCrossAxis, axis, position.z);
+                    for (const fish of bubble.bubble.fishes) {
+                        fish.setFacingRight(direction > 0);
+                    }
                 }
             });
         });
     }
 
-    private wrapAxisValue(value: number, min: number, max: number): number {
-        const range = max - min;
-        const wrapped = (value - min) % range;
-        return min + (wrapped < 0 ? wrapped + range : wrapped);
+    private getLaneDirection(laneIndex: number): number {
+        return this.moveType === MoveType.Horizontal
+            ? (laneIndex % 2 === 0 ? 1 : -1)
+            : (laneIndex % 2 === 0 ? -1 : 1);
+    }
+
+    private playReflowAnimation() {
+        const duration = Math.max(0, this.reflowPauseDuration);
+        const reflowGeneration = this._reflowGeneration;
+
+        for (const movingBubble of this._movingBubbles) {
+            if (!movingBubble.node.isValid) {
+                continue;
+            }
+
+            const start = movingBubble.node.worldPosition.clone();
+            const target = this.getMovingBubbleWorldPosition(movingBubble, movingBubble.axisPosition, start.z);
+            const distance = Vec3.distance(start, target);
+            if (duration <= 0 || distance <= 0.01) {
+                movingBubble.node.setWorldPosition(target);
+                continue;
+            }
+
+            const animation = { progress: 0 };
+            this._reflowTweenCount++;
+            tween(animation)
+                .to(duration, { progress: 1 }, {
+                    easing: 'sineInOut',
+                    onUpdate: () => {
+                        if (reflowGeneration !== this._reflowGeneration || !movingBubble.node.isValid) {
+                            return;
+                        }
+                        movingBubble.node.setWorldPosition(
+                            start.x + (target.x - start.x) * animation.progress,
+                            start.y + (target.y - start.y) * animation.progress,
+                            start.z + (target.z - start.z) * animation.progress,
+                        );
+                    },
+                })
+                .call(() => {
+                    if (reflowGeneration !== this._reflowGeneration) {
+                        return;
+                    }
+                    if (movingBubble.node.isValid) {
+                        movingBubble.node.setWorldPosition(target);
+                    }
+                    this._reflowTweenCount = Math.max(0, this._reflowTweenCount - 1);
+                })
+                .start();
+        }
+    }
+
+    // Keep the same sine calculation for normal movement and for a reflow target. When a slide
+    // finishes, the next movement frame therefore starts at exactly the same world position.
+    private getMovingBubbleWorldPosition(movingBubble: MovingBubble, axisPosition: number, z: number): Vec3 {
+        if (this.moveType === MoveType.Horizontal) {
+            const bobOffset = Math.sin(
+                axisPosition / Math.max(1, this.bobWavelength) * Math.PI * 2
+                + this._moveTime * this.bobFrequency * Math.PI * 2
+                + movingBubble.bobPhase,
+            ) * this.bobAmplitude;
+            return new Vec3(axisPosition, movingBubble.baseCrossAxis + bobOffset, z);
+        }
+
+        const waveOffset = Math.sin(
+            axisPosition / Math.max(1, this.waveLength) * Math.PI * 2
+            + this._moveTime * this.waveFrequency * Math.PI * 2
+            + movingBubble.bobPhase,
+        ) * this.waveAmplitude;
+        return new Vec3(movingBubble.baseCrossAxis + waveOffset, axisPosition, z);
     }
 
     // Moving bubbles are driven entirely by this manager, so they must not remain in the 2D
@@ -362,14 +510,16 @@ export class BubbleManager extends Component {
 
         if (max <= min) {
             const center = this.moveType === MoveType.Horizontal ? spawnPos.y : spawnPos.x;
-            return laneRadii.map(() => center);
+            return this.getPackedCrossAxisPositions(laneRadii, center);
         }
 
         const totalLaneSize = laneRadii.reduce((sum, radius) => sum + radius * 2, 0)
             + this.movingBubbleGap * Math.max(0, laneRadii.length - 1);
         if (totalLaneSize > max - min) {
-            const center = (min + max) * 0.5;
-            return laneRadii.map(() => center);
+            // Never collapse every lane onto one center. This fallback is only reached when the
+            // container was resized smaller than the bubble layout; keeping the lanes packed
+            // (even if their outer edges clip slightly) is much less disruptive than overlap.
+            return this.getPackedCrossAxisPositions(laneRadii, (min + max) * 0.5);
         }
 
         // Pack lane edges with exactly movingBubbleGap between them. Unlike equal center slots, this
@@ -380,6 +530,19 @@ export class BubbleManager extends Component {
         let cursor = min + (max - min - totalLaneSize) * 0.5;
         for (let index = 0; index < laneRadii.length; index++) {
             const radius = laneRadii[index];
+            cursor += radius;
+            positions.push(cursor);
+            cursor += radius + this.movingBubbleGap;
+        }
+        return positions;
+    }
+
+    private getPackedCrossAxisPositions(laneRadii: number[], center: number): number[] {
+        const totalLaneSize = laneRadii.reduce((sum, radius) => sum + radius * 2, 0)
+            + this.movingBubbleGap * Math.max(0, laneRadii.length - 1);
+        const positions: number[] = [];
+        let cursor = center - totalLaneSize * 0.5;
+        for (const radius of laneRadii) {
             cursor += radius;
             positions.push(cursor);
             cursor += radius + this.movingBubbleGap;

@@ -15,15 +15,42 @@ export class LevelManager extends Component {
     @property(SlotManager) slotManager: SlotManager = null;
     @property(BubbleManager) bubbleManager: BubbleManager = null;
 
+    @property(Node) loading: Node = null;
+    private _initializeGeneration = 0;
+
     initialize() {
+        const initializeGeneration = ++this._initializeGeneration;
+        let bubbleSpawned = !this.bubbleManager;
+        let otherContentSpawned = false;
+        const hideLoadingWhenReady = () => {
+            if (
+                initializeGeneration !== this._initializeGeneration
+                || !bubbleSpawned
+                || !otherContentSpawned
+            ) {
+                return;
+            }
+            if (this.loading) {
+                this.loading.active = false;
+            }
+        };
+
+        if (this.loading) {
+            this.loading.active = true;
+        }
         this.currentLevel = LevelData.Parse(this.levels[this.levelIndex]);
 
         if(PREVIEW || EDITOR) {
             this.logData();
         }
-        this.bubbleManager?.initialize(this.currentLevel);
+        this.bubbleManager?.initialize(this.currentLevel, () => {
+            bubbleSpawned = true;
+            hideLoadingWhenReady();
+        });
         this.orderManager?.initialize(this.currentLevel);
         this.slotManager?.initialize();
+        otherContentSpawned = true;
+        hideLoadingWhenReady();
     }
 
     logData() {
