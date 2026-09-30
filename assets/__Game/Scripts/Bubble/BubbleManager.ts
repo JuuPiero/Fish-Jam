@@ -38,9 +38,13 @@ export class BubbleManager extends Component {
     @property({ tooltip: 'Extra gap kept between two stacked bubbles waiting to float in' })
     bubbleGap: number = 20;
 
-    @property({ tooltip: 'Gap between moving bubbles; use a small negative value when sprite padding still looks separated' })
+    @property({ tooltip: 'Gap between adjacent bubbles in the moving grid; use a small negative value to compensate sprite padding' })
     movingBubbleGap: number = 0;
 
+    // Kept only so scenes saved with the old setting still deserialize. Moving grids now derive
+    // their scale entirely from the requested visible rows/columns and movingBubbleGap.
+    @property({ visible: false })
+    maxMovingBubbleScale: number = 1;
 
     @property({ type: Enum(MoveType) }) moveType: MoveType = MoveType.None;
     @property speed: number = 20;
@@ -261,7 +265,6 @@ export class BubbleManager extends Component {
     private reflowAfterDestroyedBubbles(): boolean {
         let hasDestroyedBubble = false;
         const bounds = this.getContainerBounds();
-        const previousLaneCount = this._movingLanes.length;
         for (const lane of this._movingLanes) {
             const removedBubbles = lane.bubbles.filter(bubble => !bubble.node.isValid);
             if (removedBubbles.length === 0) {
@@ -289,13 +292,8 @@ export class BubbleManager extends Component {
             return true;
         }
 
-        // A regular pop only changes one lane's loop length. Its row/column must stay on its
-        // existing cross-axis position; recalculating every lane here can collapse them onto
-        // one center when the UI bounds are temporarily constrained. Re-layout only after an
-        // entire row/column has actually disappeared.
-        if (this._movingLanes.length !== previousLaneCount) {
-            this.relayoutRemainingLanes(bounds);
-        }
+        // Each lane owns its own row/column. Removing bubbles only shortens that lane along its
+        // movement axis; it must never recalculate the positions of the other rows/columns.
         this.playReflowAnimation();
         return true;
     }
@@ -365,37 +363,6 @@ export class BubbleManager extends Component {
             // immediately returns to min and keeps the row/column continuously filled.
             bubble.axisPosition = min + shortenedRange * index / activeBubbles.length;
         });
-    }
-
-    // Only a completely empty lane changes the number of rows/columns. Re-center those lanes,
-    // restore the alternating direction pattern, and animate the cross-axis change as well.
-    private relayoutRemainingLanes(bounds: { xMin: number, xMax: number, yMin: number, yMax: number } | null) {
-        if (!bounds) {
-            return;
-        }
-
-        const laneRadii = this._movingLanes.map(lane => Math.max(...lane.bubbles.map(bubble => bubble.radius)));
-        const crossAxisPositions = this.getCrossAxisPositions(laneRadii, bounds, this.spawnPosNode.worldPosition);
-        this._movingLanes.forEach((lane, laneIndex) => {
-            const direction = this.getLaneDirection(laneIndex);
-            lane.direction = direction;
-            lane.bubbles.forEach(bubble => {
-                bubble.direction = direction;
-                bubble.baseCrossAxis = crossAxisPositions[laneIndex];
-                bubble.bobPhase = laneIndex * Math.PI;
-                if (this.moveType === MoveType.Horizontal) {
-                    for (const fish of bubble.bubble.fishes) {
-                        fish.setFacingRight(direction > 0);
-                    }
-                }
-            });
-        });
-    }
-
-    private getLaneDirection(laneIndex: number): number {
-        return this.moveType === MoveType.Horizontal
-            ? (laneIndex % 2 === 0 ? 1 : -1)
-            : (laneIndex % 2 === 0 ? -1 : 1);
     }
 
     private playReflowAnimation() {
@@ -513,6 +480,9 @@ export class BubbleManager extends Component {
             return this.getPackedCrossAxisPositions(laneRadii, center);
         }
 
+        // Use the same visual gap between every adjacent bubble, whichever axis it occupies.
+        // A small negative gap lets circular sprites meet at their opaque edge instead of leaving
+        // a seam caused by transparent texture padding.
         const totalLaneSize = laneRadii.reduce((sum, radius) => sum + radius * 2, 0)
             + this.movingBubbleGap * Math.max(0, laneRadii.length - 1);
         if (totalLaneSize > max - min) {
@@ -522,8 +492,8 @@ export class BubbleManager extends Component {
             return this.getPackedCrossAxisPositions(laneRadii, (min + max) * 0.5);
         }
 
-        // Pack lane edges with exactly movingBubbleGap between them. Unlike equal center slots, this
-        // leaves no artificial half-row of empty space at the top and bottom of the container.
+        // Unlike equal center slots, this leaves no artificial half-row of empty space at the
+        // outer edges of the moving grid.
         const positions: number[] = [];
         // Keep the tightly packed rows/columns centered in the available container area rather
         // than anchoring the whole group to one edge and leaving all unused space on the other.
@@ -594,14 +564,15 @@ export class BubbleManager extends Component {
             ? Math.max(0, this.bobAmplitude)
             : Math.max(0, this.waveAmplitude)) * 2;
 
-        // Fit both the requested on-screen density and tightly packed lanes. The latter uses
-        // their actual radii rather than reserving an additional empty half-slot at each edge.
+        // Fit both requested on-screen density and the number of cross-axis lanes. This is
+        // direction-agnostic, so a 3-by-5 grid scales the same way for horizontal or vertical
+        // movement; the limiting axis determines the final common scale.
         const largestRadius = Math.max(...laneRadii);
         const scaleForMovingSlots = (mainAxisSize / desiredVisibleBubbles - this.movingBubbleGap) / (largestRadius * 2);
         const totalNativeDiameter = laneRadii.reduce((sum, radius) => sum + radius * 2, 0);
         const scaleForLanes = (crossAxisSize - this.padding * 2 - waveSpace
             - this.movingBubbleGap * Math.max(0, laneRadii.length - 1)) / totalNativeDiameter;
-        return Math.max(0.01, Math.min(1, scaleForMovingSlots, scaleForLanes));
+        return Math.max(0.01, Math.min(scaleForMovingSlots, scaleForLanes));
     }
 
     private moveWithWrap(value: number, delta: number, min: number, max: number): number {

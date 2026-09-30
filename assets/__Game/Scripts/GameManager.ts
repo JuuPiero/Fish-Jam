@@ -14,6 +14,7 @@ import { PREVIEW } from 'cc/env';
 import { PlayableAdsManager } from '../../_iKame/Scripts/PlayableAdsManager';
 import { NavigationContainer } from '../../_iKame/Scripts/Navigation/NavigationContainer';
 import { TutorialController } from './TutorialController';
+import { FishCountUI } from './UI/FishCountUI';
 const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
@@ -61,6 +62,8 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.LOADED);
         TrackingManager.TrackEvent(ETrackingEvent.DISPLAYED);
         PlayableAdsManager.SetupLinkStore();
+
+
         EventBus.emit(GameEvents.NEW_LEVEL);
         AudioManager.instance.playMusic('BGMFish')
     }
@@ -75,6 +78,8 @@ export class GameManager extends Component {
         ServiceLocator.get(TutorialController)?.hideHand();
         this.levelManager.initialize()
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
+        ServiceLocator.get(FishCountUI).updateUI()
+        
     }
 
     onWinGame = () => {

@@ -1,7 +1,7 @@
 [
   {
     "__type__": "cc.SceneAsset",
-    "_name": "Vertical",
+    "_name": "HorizontalNew",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_native": "",
@@ -11,7 +11,7 @@
   },
   {
     "__type__": "cc.Scene",
-    "_name": "Vertical",
+    "_name": "HorizontalNew",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": null,
@@ -74,7 +74,7 @@
     "_globals": {
       "__id__": 185
     },
-    "_id": "003988d6-b0c5-42a9-baf5-08e4adb0d85a"
+    "_id": "e61b4157-f87b-4033-b9c4-64d558ff2af9"
   },
   {
     "__type__": "cc.Node",
@@ -316,7 +316,7 @@
     "_priority": 1,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 960.0000000000001,
+    "_orthoHeight": 960,
     "_near": 1,
     "_far": 2000,
     "_color": {
@@ -1307,7 +1307,7 @@
     "bubbleGap": 0,
     "movingBubbleGap": -18,
     "maxMovingBubbleScale": 1,
-    "moveType": 2,
+    "moveType": 1,
     "speed": 55,
     "reflowPauseDuration": 0.2,
     "padding": 0,
