@@ -1,8 +1,8 @@
 import super_html_playable from "./super_html_playable";
 import { ETrackingEvent, TrackingManager } from "./TrackingManager";
 
-const APPLE_STORE = ""
-const GOOGLE_PLAY_STORE = ""
+const APPLE_STORE = "https://apps.apple.com/"
+const GOOGLE_PLAY_STORE = "https://play.google.com/store/apps/details?id=com.ig.fish.up.match"
 
 
 export class PlayableAdsManager {

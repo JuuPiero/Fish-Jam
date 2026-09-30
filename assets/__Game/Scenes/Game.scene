@@ -2663,8 +2663,11 @@
       "__id__": 24
     },
     "bubbleGap": 0,
-    "moveType": 1,
+    "movingBubbleGap": 0,
+    "maxMovingBubbleScale": 1,
+    "moveType": 0,
     "speed": 30,
+    "reflowPauseDuration": 0.2,
     "padding": 0,
     "rows": 5,
     "columnsDisplay": 3.5,
@@ -2673,6 +2676,9 @@
     "bobWavelength": 420,
     "columns": 3,
     "rowsDisplay": 3,
+    "waveAmplitude": 8,
+    "waveFrequency": 0.6,
+    "waveLength": 420,
     "_id": "40aPZ/JzxBnL7ixRqwBoDP"
   },
   {
@@ -4574,6 +4580,7 @@
     "bubbleManager": {
       "__id__": 86
     },
+    "loading": null,
     "_id": "e3HPdbLNFFvYdwfTatTE2P"
   },
   {
