@@ -48,8 +48,14 @@ export class BubbleManager extends Component {
 
     @property({ type: Enum(MoveType) }) moveType: MoveType = MoveType.None;
     @property speed: number = 20;
-    @property({ tooltip: 'Seconds bubbles take to slide into a freed slot; all lane movement pauses until this finishes' })
+    @property({ tooltip: 'Minimum seconds bubbles take to slide into a freed slot; all lane movement pauses until this finishes' })
     reflowPauseDuration: number = 0.2;
+
+    @property({ tooltip: 'Maximum speed of a bubble while it slides into a freed slot (UI units/second)' })
+    reflowSpeed: number = 520;
+
+    @property({ tooltip: 'Longest a reflow slide may take, even for a large gap' })
+    reflowMaxDuration: number = 0.48;
     @property padding: number = 50; // horizontal: top and bottom - vertical: left and right
 
     @property({ group: "Horizontal" }) rows: number = 5;
@@ -366,7 +372,6 @@ export class BubbleManager extends Component {
     }
 
     private playReflowAnimation() {
-        const duration = Math.max(0, this.reflowPauseDuration);
         const reflowGeneration = this._reflowGeneration;
 
         for (const movingBubble of this._movingBubbles) {
@@ -377,11 +382,25 @@ export class BubbleManager extends Component {
             const start = movingBubble.node.worldPosition.clone();
             const target = this.getMovingBubbleWorldPosition(movingBubble, movingBubble.axisPosition, start.z);
             const distance = Vec3.distance(start, target);
-            if (duration <= 0 || distance <= 0.01) {
+            if (distance <= 0.01) {
                 movingBubble.node.setWorldPosition(target);
                 continue;
             }
 
+            // A fixed 0.2-second tween made large gap fills look like a snap. Keep quick
+            // reflows responsive, but let a bubble that travels farther take proportionally
+            // longer so the lane settles as a smooth flow.
+            const minimumDuration = Math.max(0, this.reflowPauseDuration);
+            const maximumDuration = Math.max(minimumDuration, this.reflowMaxDuration);
+            const duration = Math.min(
+                maximumDuration,
+                Math.max(minimumDuration, distance / Math.max(1, this.reflowSpeed)),
+            );
+            if (duration <= 0) {
+                movingBubble.node.setWorldPosition(target);
+                movingBubble.bubble.playReflowBounce();
+                continue;
+            }
             const animation = { progress: 0 };
             this._reflowTweenCount++;
             tween(animation)
@@ -404,6 +423,10 @@ export class BubbleManager extends Component {
                     }
                     if (movingBubble.node.isValid) {
                         movingBubble.node.setWorldPosition(target);
+                        // The visual bounce starts only once this bubble reaches its new slot.
+                        // It therefore adds a soft physical settle without fighting the layout
+                        // tween that owns the root position above.
+                        movingBubble.bubble.playReflowBounce();
                     }
                     this._reflowTweenCount = Math.max(0, this._reflowTweenCount - 1);
                 })

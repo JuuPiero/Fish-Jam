@@ -1310,6 +1310,8 @@
     "moveType": 2,
     "speed": 55,
     "reflowPauseDuration": 0.2,
+    "reflowSpeed": 520,
+    "reflowMaxDuration": 0.48,
     "padding": 0,
     "rows": 5,
     "columnsDisplay": 3.5,

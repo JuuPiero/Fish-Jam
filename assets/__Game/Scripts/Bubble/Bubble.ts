@@ -20,6 +20,9 @@ export class Bubble extends Component {
 
     @property({ readonly: true, type: [Fish] }) fishes: Fish[] = []
 
+    @property({ tooltip: 'Visual scale applied to fish while they remain inside this bubble' })
+    fishScale: number = 1.2;
+
     // A small visual overlap makes the fish cluster feel fuller and lets the bubble stay compact.
     private static readonly FISH_OVERLAP = 8;
     // Keep small groups compact; the packing routine grows the bubble only when a particular
@@ -224,6 +227,7 @@ export class Bubble extends Component {
             fish.initialize(fishId);
         }
         this.calculateRadius();
+        this.fishes.forEach(fish => fish.setInBubbleScale(this.fishScale));
         this.startIdleBounce();
     }
 
@@ -243,16 +247,27 @@ export class Bubble extends Component {
     // Juicy jelly "boing" on impact: a couple of damped squash/stretch oscillations plus a
     // matching rotation wobble. Both only ever touch `visual`; the root node continues to own
     // physics/collider state, while fish stay in their separate bubbleContainer.
-    bounce() {
+    // Used by the moving-grid reflow as a milder version of a collision boing.
+    playReflowBounce() {
+        this.bounce(0.55);
+    }
+
+    bounce(strength: number = 1) {
         this.stopIdleBounce();
         this._bounceTween?.stop();
         this._wobbleTween?.stop();
 
         const size = this.radius * 2;
+        const stretch = 1 + 0.1 * strength;
+        const squash = 1 - 0.08 * strength;
+        const reboundSquash = 1 - 0.04 * strength;
+        const reboundStretch = 1 + 0.05 * strength;
+        const settleStretch = 1 + 0.02 * strength;
+        const settleSquash = 1 - 0.02 * strength;
         this._bounceTween = tween(this._visualTransform)
-            .to(0.06, { contentSize: new Size(size * 1.1, size * 0.92) }, { easing: 'quadOut' })
-            .to(0.09, { contentSize: new Size(size * 0.96, size * 1.05) }, { easing: 'sineInOut' })
-            .to(0.11, { contentSize: new Size(size * 1.02, size * 0.98) }, { easing: 'sineInOut' })
+            .to(0.06, { contentSize: new Size(size * stretch, size * squash) }, { easing: 'quadOut' })
+            .to(0.09, { contentSize: new Size(size * reboundSquash, size * reboundStretch) }, { easing: 'sineInOut' })
+            .to(0.11, { contentSize: new Size(size * settleStretch, size * settleSquash) }, { easing: 'sineInOut' })
             .to(0.16, { contentSize: new Size(size, size) }, { easing: 'elasticOut' })
             .call(() => {
                 this._bounceTween = null;
@@ -260,7 +275,7 @@ export class Bubble extends Component {
             })
             .start();
 
-        const kick = (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 8);
+        const kick = (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 8) * strength;
         this._wobbleTween = tween(this.visual)
             .to(0.06, { angle: kick }, { easing: 'quadOut' })
             .to(0.09, { angle: -kick * 0.5 }, { easing: 'sineInOut' })
