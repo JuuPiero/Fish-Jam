@@ -2,6 +2,7 @@ import { _decorator, Component, instantiate, Node } from 'cc';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { Fish } from '../Fish/Fish';
+import { Slot } from './Slot';
 const { ccclass, property } = _decorator;
 
 @ccclass('SlotManager')
@@ -58,7 +59,11 @@ export class SlotManager extends Component {
         }
         this._occupants[index] = fish;
         this._pendingParkArrivals.add(fish);
-        fish.flyToSlot(this._slots[index], flyLayer, () => {
+        const slot = this._slots[index].getComponent(Slot);
+        // Fish belong inside the Slot's content container, not on the slot root. This keeps
+        // decorative/background nodes on the slot independent of the parked-fish hierarchy.
+        const landingContainer = slot?.container ?? this._slots[index];
+        fish.flyToSlot(landingContainer, flyLayer, () => {
             this._pendingParkArrivals.delete(fish);
             onArrive?.();
         });

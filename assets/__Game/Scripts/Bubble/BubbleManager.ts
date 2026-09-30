@@ -19,6 +19,12 @@ interface MovingBubble {
     max: number;
     baseCrossAxis: number;
     bobPhase: number;
+    radius: number;
+}
+
+interface MovingLane {
+    bubbles: MovingBubble[];
+    direction: number;
 }
 
 @ccclass('BubbleManager')
@@ -31,24 +37,34 @@ export class BubbleManager extends Component {
     @property({ tooltip: 'Extra gap kept between two stacked bubbles waiting to float in' })
     bubbleGap: number = 20;
 
+    @property({ tooltip: 'Gap between moving bubbles; use a small negative value when sprite padding still looks separated' })
+    movingBubbleGap: number = 0;
+
 
     @property({ type: Enum(MoveType) }) moveType: MoveType = MoveType.None;
     @property speed: number = 20;
     @property padding: number = 50; // horizontal: top and bottom - vertical: left and right
 
     @property({ group: "Horizontal" }) rows: number = 5;
+    @property({ group: "Horizontal", tooltip: 'Maximum bubbles visible in each moving row' }) columnsDisplay: number = 2.5;
     @property({ group: "Horizontal" }) bobAmplitude: number = 8;
     @property({ group: "Horizontal" }) bobFrequency: number = 0.6;
     @property({ group: "Horizontal" }) bobWavelength: number = 420;
 
     @property({ group: "Vertical" }) columns: number = 3;
+    @property({ group: "Vertical", tooltip: 'Maximum bubbles visible in each moving column' }) rowsDisplay: number = 3;
+    @property({ group: "Vertical" }) waveAmplitude: number = 8;
+    @property({ group: "Vertical" }) waveFrequency: number = 0.6;
+    @property({ group: "Vertical" }) waveLength: number = 420;
 
     private _movingBubbles: MovingBubble[] = [];
+    private _movingLanes: MovingLane[] = [];
     private _moveTime = 0;
 
 
     initialize(levelData: LevelData) {
         this._movingBubbles = [];
+        this._movingLanes = [];
         this._moveTime = 0;
         for (const child of this.node.children.slice()) {
             child.removeFromParent();
@@ -101,6 +117,7 @@ export class BubbleManager extends Component {
             return;
         }
         this._moveTime += deltaTime;
+        this.reflowAfterDestroyedBubbles();
 
         for (const movingBubble of this._movingBubbles) {
             if (!movingBubble.node.isValid || movingBubble.max <= movingBubble.min) {
@@ -126,7 +143,15 @@ export class BubbleManager extends Component {
                     * this.bobAmplitude;
                 movingBubble.node.setWorldPosition(next, movingBubble.baseCrossAxis + bobOffset, position.z);
             } else {
-                movingBubble.node.setWorldPosition(position.x, next, position.z);
+                // Same travelling-wave treatment for vertical lanes: Y drives the sine phase
+                // and the bubble shifts gently along X.
+                const waveOffset = Math.sin(
+                    next / Math.max(1, this.waveLength) * Math.PI * 2
+                    + this._moveTime * this.waveFrequency * Math.PI * 2
+                    + movingBubble.bobPhase,
+                )
+                    * this.waveAmplitude;
+                movingBubble.node.setWorldPosition(movingBubble.baseCrossAxis + waveOffset, next, position.z);
             }
         }
     }
@@ -170,23 +195,28 @@ export class BubbleManager extends Component {
                 max: 0,
                 baseCrossAxis: 0,
                 bobPhase: laneIndex * Math.PI,
+                radius: 0,
             };
             lanes[laneIndex].push(movingBubble);
             this._movingBubbles.push(movingBubble);
         }
 
         const nativeLaneRadii = lanes.map(lane => Math.max(...lane.map(item => item.bubble.radius)));
-        const bubbleScale = this.getMovingBubbleScale(laneCount, nativeLaneRadii, containerBounds);
+        const maxBubblesPerLane = Math.max(...lanes.map(lane => lane.length));
+        const bubbleScale = this.getMovingBubbleScale(maxBubblesPerLane, nativeLaneRadii, containerBounds);
         for (const movingBubble of this._movingBubbles) {
             const originalScale = movingBubble.node.scale;
-            // Bubble art faces left by default. Mirror only lanes travelling left -> right so
-            // the fishes visually lead the direction in which their bubble is moving.
-            const directionScaleX = this.moveType === MoveType.Horizontal && movingBubble.direction > 0 ? -1 : 1;
             movingBubble.node.setScale(
-                originalScale.x * bubbleScale * directionScaleX,
+                originalScale.x * bubbleScale,
                 originalScale.y * bubbleScale,
                 originalScale.z,
             );
+            movingBubble.radius = movingBubble.bubble.radius * bubbleScale;
+            if (this.moveType === MoveType.Horizontal) {
+                for (const fish of movingBubble.bubble.fishes) {
+                    fish.setFacingRight(movingBubble.direction > 0);
+                }
+            }
         }
 
         // All layout measurements below use the visual radius after the common root scale.
@@ -211,6 +241,79 @@ export class BubbleManager extends Component {
                 }
             });
         });
+        this._movingLanes = lanes.map(lane => ({ bubbles: lane, direction: lane[0].direction }));
+    }
+
+    private reflowAfterDestroyedBubbles() {
+        let hasDestroyedBubble = false;
+        for (const lane of this._movingLanes) {
+            const activeBubbles = lane.bubbles.filter(bubble => bubble.node.isValid);
+            if (activeBubbles.length !== lane.bubbles.length) {
+                lane.bubbles = activeBubbles;
+                hasDestroyedBubble = true;
+            }
+        }
+        if (!hasDestroyedBubble) {
+            return;
+        }
+
+        const activeLanes = this._movingLanes.filter(lane => lane.bubbles.length > 0);
+        this._movingLanes = activeLanes;
+        this._movingBubbles = [];
+        for (const lane of activeLanes) {
+            this._movingBubbles.push(...lane.bubbles);
+        }
+        if (activeLanes.length === 0) {
+            return;
+        }
+
+        const bounds = this.getContainerBounds();
+        if (!bounds) {
+            return;
+        }
+
+        const laneRadii = activeLanes.map(lane => Math.max(...lane.bubbles.map(bubble => bubble.radius)));
+        const crossAxisPositions = this.getCrossAxisPositions(laneRadii, bounds, this.spawnPosNode.worldPosition);
+
+        activeLanes.forEach((lane, laneIndex) => {
+            const laneRadius = laneRadii[laneIndex];
+            const limits = this.getLaneMoveLimits(bounds, lane.bubbles.length, laneRadius);
+            const oldAxisRange = lane.bubbles[0].max - lane.bubbles[0].min;
+            const getAxis = (bubble: MovingBubble) => this.moveType === MoveType.Horizontal
+                ? bubble.node.worldPosition.x
+                : bubble.node.worldPosition.y;
+            const orderedBubbles = lane.bubbles.slice().sort((a, b) => {
+                const order = getAxis(a) - getAxis(b);
+                return lane.direction > 0 ? order : -order;
+            });
+            const firstBubble = orderedBubbles[0];
+            const oldProgress = oldAxisRange > 0
+                ? (getAxis(firstBubble) - firstBubble.min) / oldAxisRange
+                : 0;
+            const newAxisRange = limits.max - limits.min;
+            const firstAxis = limits.min + Math.max(0, Math.min(1, oldProgress)) * newAxisRange;
+            const spacing = newAxisRange / orderedBubbles.length;
+
+            orderedBubbles.forEach((bubble, index) => {
+                const axis = this.wrapAxisValue(firstAxis + lane.direction * spacing * index, limits.min, limits.max);
+                bubble.min = limits.min;
+                bubble.max = limits.max;
+                bubble.baseCrossAxis = crossAxisPositions[laneIndex];
+
+                const position = bubble.node.worldPosition;
+                if (this.moveType === MoveType.Horizontal) {
+                    bubble.node.setWorldPosition(axis, bubble.baseCrossAxis, position.z);
+                } else {
+                    bubble.node.setWorldPosition(bubble.baseCrossAxis, axis, position.z);
+                }
+            });
+        });
+    }
+
+    private wrapAxisValue(value: number, min: number, max: number): number {
+        const range = max - min;
+        const wrapped = (value - min) % range;
+        return min + (wrapped < 0 ? wrapped + range : wrapped);
     }
 
     // Moving bubbles are driven entirely by this manager, so they must not remain in the 2D
@@ -247,21 +350,41 @@ export class BubbleManager extends Component {
         bounds: { xMin: number, xMax: number, yMin: number, yMax: number },
         spawnPos: Readonly<{ x: number, y: number }>,
     ): number[] {
-        const largestRadius = Math.max(...laneRadii);
-        const bobMargin = this.moveType === MoveType.Horizontal ? Math.max(0, this.bobAmplitude) : 0;
+        const waveMargin = this.moveType === MoveType.Horizontal
+            ? Math.max(0, this.bobAmplitude)
+            : Math.max(0, this.waveAmplitude);
         const min = this.moveType === MoveType.Horizontal
-            ? bounds.yMin + this.padding + bobMargin + largestRadius
-            : bounds.xMin + this.padding + largestRadius;
+            ? bounds.yMin + this.padding + waveMargin
+            : bounds.xMin + this.padding + waveMargin;
         const max = this.moveType === MoveType.Horizontal
-            ? bounds.yMax - this.padding - bobMargin - largestRadius
-            : bounds.xMax - this.padding - largestRadius;
+            ? bounds.yMax - this.padding - waveMargin
+            : bounds.xMax - this.padding - waveMargin;
 
         if (max <= min) {
             const center = this.moveType === MoveType.Horizontal ? spawnPos.y : spawnPos.x;
             return laneRadii.map(() => center);
         }
 
-        return laneRadii.map((_, index) => min + (max - min) * ((index + 0.5) / laneRadii.length));
+        const totalLaneSize = laneRadii.reduce((sum, radius) => sum + radius * 2, 0)
+            + this.movingBubbleGap * Math.max(0, laneRadii.length - 1);
+        if (totalLaneSize > max - min) {
+            const center = (min + max) * 0.5;
+            return laneRadii.map(() => center);
+        }
+
+        // Pack lane edges with exactly movingBubbleGap between them. Unlike equal center slots, this
+        // leaves no artificial half-row of empty space at the top and bottom of the container.
+        const positions: number[] = [];
+        // Keep the tightly packed rows/columns centered in the available container area rather
+        // than anchoring the whole group to one edge and leaving all unused space on the other.
+        let cursor = min + (max - min - totalLaneSize) * 0.5;
+        for (let index = 0; index < laneRadii.length; index++) {
+            const radius = laneRadii[index];
+            cursor += radius;
+            positions.push(cursor);
+            cursor += radius + this.movingBubbleGap;
+        }
+        return positions;
     }
 
     private getLaneMoveLimits(
@@ -272,13 +395,17 @@ export class BubbleManager extends Component {
         const visibleMin = this.moveType === MoveType.Horizontal ? bounds.xMin : bounds.yMin;
         const visibleMax = this.moveType === MoveType.Horizontal ? bounds.xMax : bounds.yMax;
         const visibleSize = visibleMax - visibleMin;
+        const desiredVisibleBubbles = Math.min(
+            bubbleCount,
+            Math.max(1, this.moveType === MoveType.Horizontal ? this.columnsDisplay : this.rowsDisplay),
+        );
 
-        // A slot is just large enough for the widest bubble in its lane plus the configured
-        // gap. This makes density follow bubble size instead of a fixed "visible count".
-        const slotSize = laneRadius * 2 + this.bubbleGap;
-        const contentCycleSize = slotSize * bubbleCount;
+        // Make the loop long enough that only the requested number of bubbles appears in the
+        // container at once; the physical-size minimum still prevents overlapping bubbles.
+        const requestedCycleSize = visibleSize * bubbleCount / desiredVisibleBubbles;
+        const contentCycleSize = (laneRadius * 2 + this.movingBubbleGap) * bubbleCount;
         const minimumCycleSize = visibleSize + laneRadius * 2;
-        const cycleSize = Math.max(contentCycleSize, minimumCycleSize);
+        const cycleSize = Math.max(requestedCycleSize, contentCycleSize, minimumCycleSize);
         return {
             min: visibleMin - laneRadius,
             max: visibleMin - laneRadius + cycleSize,
@@ -286,21 +413,32 @@ export class BubbleManager extends Component {
     }
 
     private getMovingBubbleScale(
-        laneCount: number,
+        maxBubblesPerLane: number,
         laneRadii: number[],
         bounds: { xMin: number, xMax: number, yMin: number, yMax: number },
     ): number {
-        const largestRadius = Math.max(...laneRadii);
+        const mainAxisSize = this.moveType === MoveType.Horizontal
+            ? bounds.xMax - bounds.xMin
+            : bounds.yMax - bounds.yMin;
         const crossAxisSize = this.moveType === MoveType.Horizontal
             ? bounds.yMax - bounds.yMin
             : bounds.xMax - bounds.xMin;
-        const bobSpace = this.moveType === MoveType.Horizontal ? Math.max(0, this.bobAmplitude) * 2 : 0;
+        const desiredVisibleBubbles = Math.max(
+            1,
+            Math.min(maxBubblesPerLane, this.moveType === MoveType.Horizontal ? this.columnsDisplay : this.rowsDisplay),
+        );
+        const waveSpace = (this.moveType === MoveType.Horizontal
+            ? Math.max(0, this.bobAmplitude)
+            : Math.max(0, this.waveAmplitude)) * 2;
 
-        // The lane layout is the only scale constraint. Along the moving axis, spacing is
-        // derived from the scaled bubble diameter, avoiding large gaps as density changes.
-        const scaleForLanes = (crossAxisSize - this.padding * 2 - bobSpace - this.bubbleGap * laneCount)
-            / (largestRadius * 2 * (laneCount + 1));
-        return Math.max(0.01, Math.min(1, scaleForLanes));
+        // Fit both the requested on-screen density and tightly packed lanes. The latter uses
+        // their actual radii rather than reserving an additional empty half-slot at each edge.
+        const largestRadius = Math.max(...laneRadii);
+        const scaleForMovingSlots = (mainAxisSize / desiredVisibleBubbles - this.movingBubbleGap) / (largestRadius * 2);
+        const totalNativeDiameter = laneRadii.reduce((sum, radius) => sum + radius * 2, 0);
+        const scaleForLanes = (crossAxisSize - this.padding * 2 - waveSpace
+            - this.movingBubbleGap * Math.max(0, laneRadii.length - 1)) / totalNativeDiameter;
+        return Math.max(0.01, Math.min(1, scaleForMovingSlots, scaleForLanes));
     }
 
     private moveWithWrap(value: number, delta: number, min: number, max: number): number {

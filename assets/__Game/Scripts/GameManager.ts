@@ -1,4 +1,4 @@
-import { _decorator, Component, EventKeyboard, KeyCode, Node } from 'cc';
+import { _decorator, Component, EventKeyboard, Input, input, KeyCode, Node } from 'cc';
 import { EventBus } from '../../_iKame/Scripts/EventBus';
 import { GameEvents } from './GameEvents';
 import { LevelManager } from './LevelManager';
@@ -13,6 +13,7 @@ import { AudioManager } from '../../_iKame/Scripts/Audio/AudioManager';
 import { PREVIEW } from 'cc/env';
 import { PlayableAdsManager } from '../../_iKame/Scripts/PlayableAdsManager';
 import { NavigationContainer } from '../../_iKame/Scripts/Navigation/NavigationContainer';
+import { TutorialController } from './TutorialController';
 const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
@@ -36,6 +37,7 @@ export class GameManager extends Component {
         EventBus.on(GameEvents.MATCHED, this.onProgress);
         EventBus.on(GameEvents.FISH_CLICKED, this.onFishClicked);
         EventBus.on(GameEvents.ORDER_READY, this.onOrderReady);
+        input.on(Input.EventType.KEY_DOWN, this.toggleMusic, this);
     }
 
     protected onDisable(): void {
@@ -45,6 +47,7 @@ export class GameManager extends Component {
         EventBus.off(GameEvents.MATCHED, this.onProgress);
         EventBus.off(GameEvents.FISH_CLICKED, this.onFishClicked);
         EventBus.off(GameEvents.ORDER_READY, this.onOrderReady);
+        input.off(Input.EventType.KEY_DOWN, this.toggleMusic, this);
     }
 
     protected start(): void {
@@ -60,6 +63,9 @@ export class GameManager extends Component {
         this.progress = 0;
         this.progressTracked = { quarter: false, half: false, threeQuarter: false };
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
+        // The hand may currently be a child of a fish. Detach it before BubbleManager destroys
+        // the previous level's bubbles, otherwise the hand would be destroyed with that fish.
+        ServiceLocator.get(TutorialController)?.hideHand();
         this.levelManager.initialize()
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
     }
@@ -90,10 +96,12 @@ export class GameManager extends Component {
             if (this.isPlayMusic) {
                 AudioManager.instance.stopMusic()
                 this.isPlayMusic = false;
+                 ServiceLocator.get(TutorialController).hideHand()
             }
             else {
                 AudioManager.instance.playMusic('BGM')
                 this.isPlayMusic = true;
+                
             }
         }
     }

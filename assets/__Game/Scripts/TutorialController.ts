@@ -33,12 +33,18 @@ export class TutorialController extends Component {
     private _pointTween: Tween<Node> | null = null;
     private _waitingForSettle = false;
     private _settledStreak = 0;
+    private _handHomeParent: Node | null = null;
+    private _handHomePosition: Vec3 | null = null;
     // The hint is only ever for the very first fish of a level - once the player taps any fish
     // (presumably having gotten the idea), it's done for the rest of that level.
     private _done = false;
 
     protected onLoad(): void {
         ServiceLocator.register(TutorialController, this);
+        if (this.hand) {
+            this._handHomeParent = this.hand.parent;
+            this._handHomePosition = this.hand.position.clone();
+        }
         if (!this.viewport) {
             this.viewport = this.node.parent;
         }
@@ -115,15 +121,11 @@ export class TutorialController extends Component {
             return;
         }
 
+        // Parent the hint to the target fish so it follows moving bubbles and their wave
+        // motion exactly instead of only sampling the fish position once.
+        this.hand.setParent(target.node);
+        this.hand.setPosition(Vec3.ZERO);
         this.hand.active = true;
-        const localPos = new Vec3();
-        const parent = this.hand.parent;
-        if (parent) {
-            parent.inverseTransformPoint(localPos, target.node.worldPosition);
-        } else {
-            Vec3.copy(localPos, target.node.worldPosition);
-        }
-        this.hand.setPosition(localPos);
         this.playPointTween();
     }
 
@@ -139,12 +141,25 @@ export class TutorialController extends Component {
             .start();
     }
 
-    private hideHand = () => {
+    public hideHand = () => {
         this._pointTween?.stop();
         this._pointTween = null;
         if (this.hand) {
             this.hand.active = false;
             this.hand.setScale(1, 1, 1);
+            this.restoreHandParent();
+        }
+    }
+
+    private restoreHandParent() {
+        if (!this.hand || !this._handHomeParent?.isValid) {
+            return;
+        }
+        if (this.hand.parent !== this._handHomeParent) {
+            this.hand.setParent(this._handHomeParent);
+        }
+        if (this._handHomePosition) {
+            this.hand.setPosition(this._handHomePosition);
         }
     }
 

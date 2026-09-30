@@ -60,10 +60,12 @@ export class Fish extends Component {
     private _pathLength = 0;
     private _landingRotationTween: Tween<Node> | null = null;
     private _landingScaleTween: Tween<Node> | null = null;
+    private _visualBaseScale: Vec3 | null = null;
 
     protected onLoad(): void {
         this._button = this.getComponent(Button)
         this.fishAnim = this.visual.getComponent(sp.Skeleton);
+        this._visualBaseScale = this.visual.scale.clone();
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
@@ -103,6 +105,7 @@ export class Fish extends Component {
         this._hoverTween = null;
         this.node.setScale(1, 1, 1);
         this.node.angle = 0;
+        this.setFacingRight(false);
 
         this.onclick?.();
         EventBus.emit(GameEvents.FISH_CLICKED, this);
@@ -131,6 +134,20 @@ export class Fish extends Component {
 
     setInteractable(value: boolean) {
         this._button.interactable = value;
+    }
+
+    // Only the art is mirrored while a fish is inside a moving bubble. Keeping this node's
+    // root transform positive prevents a detached fish from inheriting a negative world scale
+    // and becoming visually flattened while its flight tween rotates it.
+    setFacingRight(value: boolean) {
+        if (!this._visualBaseScale) {
+            this._visualBaseScale = this.visual.scale.clone();
+        }
+        this.visual.setScale(
+            Math.abs(this._visualBaseScale.x) * (value ? -1 : 1),
+            this._visualBaseScale.y,
+            this._visualBaseScale.z,
+        );
     }
 
     // A waiting slot uses the default curved path and a short vertical approach before landing.
