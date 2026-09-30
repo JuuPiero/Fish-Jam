@@ -1310,6 +1310,8 @@
     "moveType": 1,
     "speed": 55,
     "reflowPauseDuration": 0.2,
+    "reflowSpeed": 520,
+    "reflowMaxDuration": 0.48,
     "padding": 0,
     "rows": 5,
     "columnsDisplay": 3.5,
@@ -2064,7 +2066,7 @@
     "orderContainer": {
       "__id__": 53
     },
-    "spacing": 220,
+    "spacing": 270,
     "count": 2,
     "relayoutDuration": 0.25,
     "orders": [],
