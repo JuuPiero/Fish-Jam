@@ -1,0 +1,147 @@
+CCEffect %{
+	techniques:
+	- passes:
+		- vert: sprite-vs:vert
+			frag: background-caustics-fs:frag
+			rasterizerState:
+				cullMode: none
+			depthStencilState:
+				depthTest: false
+				depthWrite: false
+			blendState:
+				targets:
+				- blend: true
+					blendSrc: one
+					blendDst: one
+					blendSrcAlpha: one
+					blendDstAlpha: one
+			properties:
+				tintColor: { value: [1, 0.95, 0.75, 1], editor: { type: color } }
+				intensity: { value: 0.3 }
+				tiles: { value: [1.8, 1, 0, 0] }
+				repeat: { value: [2, 2, 0, 0] }
+				scaleA: { value: 1.0 }
+				scaleB: { value: 0.66 }
+				drift: { value: 1.0 }
+				perspective: { value: 0.6 }
+				bgTexture: { value: white }
+				bgMap: { value: [1, 0.4568, 0, 0] }
+				darkCut: { value: [0.28, 0.55, 0, 0] }
+				distortAmount: { value: 0.04 }
+				distortScale: { value: 3.0 }
+				distortSpeed: { value: 0.12 }
+				fadeFrom: { value: [1.0, 0.6, 0, 0] }
+				timeOffset: { value: 0.0 }
+}%
+
+CCProgram sprite-vs %{
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#if USE_LOCAL
+		#include <builtin/uniforms/cc-local>
+	#endif
+	#if SAMPLE_FROM_RT
+		#include <common/common-define>
+	#endif
+
+	in vec3 a_position;
+	in vec2 a_texCoord;
+	in vec4 a_color;
+
+	out vec4 color;
+	out vec2 uv0;
+
+	vec4 vert () {
+		vec4 pos = vec4(a_position, 1.0);
+		#if USE_LOCAL
+			pos = cc_matWorld * pos;
+		#endif
+		#if USE_PIXEL_ALIGNMENT
+			pos = cc_matView * pos;
+			pos.xyz = floor(pos.xyz);
+			pos = cc_matProj * pos;
+		#else
+			pos = cc_matViewProj * pos;
+		#endif
+
+		uv0 = a_texCoord;
+		#if SAMPLE_FROM_RT
+			CC_HANDLE_RT_SAMPLE_FLIP(uv0);
+		#endif
+		color = a_color;
+		return pos;
+	}
+}%
+
+CCProgram background-caustics-fs %{
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#include <builtin/internal/embedded-alpha>
+
+	in vec2 uv0;
+	in vec4 color;
+
+	#pragma builtin(local)
+	layout(set = 2, binding = 11) uniform sampler2D cc_spriteTexture;
+	uniform sampler2D bgTexture;
+	uniform BackgroundCausticsParams {
+		vec4 tintColor;
+		vec4 tiles;
+		vec4 repeat;
+		vec4 bgMap;
+		vec4 darkCut;
+		vec4 fadeFrom;
+		float intensity;
+		float scaleA;
+		float scaleB;
+		float drift;
+		float perspective;
+		float distortAmount;
+		float distortScale;
+		float distortSpeed;
+		float timeOffset;
+	};
+
+	vec2 hash22 (vec2 p) {
+		p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+		return fract(sin(p) * 43758.5453) * 2.0 - 1.0;
+	}
+
+	vec2 noise22 (vec2 p) {
+		vec2 cell = floor(p);
+		vec2 f = fract(p);
+		vec2 u = f * f * (3.0 - 2.0 * f);
+		vec2 low = mix(hash22(cell), hash22(cell + vec2(1.0, 0.0)), u.x);
+		vec2 high = mix(hash22(cell + vec2(0.0, 1.0)), hash22(cell + vec2(1.0, 1.0)), u.x);
+		return mix(low, high, u.y);
+	}
+
+	vec4 frag () {
+		float t = (cc_time.x + timeOffset) * drift;
+		vec2 q = vec2(uv0.x, 1.0 - uv0.y);
+
+		vec2 warp = noise22(q * distortScale
+			+ vec2(t * distortSpeed, -t * distortSpeed * 0.7)) * distortAmount;
+
+		float s = max(1.0 - perspective * q.y, 0.05);
+		vec2 floorUv = vec2((q.x - 0.5) / s + 0.5, q.y / s) * repeat.xy;
+
+		vec2 sampleA = floorUv * scaleA + vec2(t * 0.020, t * 0.013) + warp;
+		vec2 sampleB = floorUv * scaleB + vec2(-t * 0.017, t * 0.011) + warp.yx;
+		float a = CCSampleWithAlphaSeparated(cc_spriteTexture, vec2(sampleA.x, 1.0 - sampleA.y)).r;
+		float b = CCSampleWithAlphaSeparated(cc_spriteTexture, vec2(sampleB.x, 1.0 - sampleB.y)).r;
+		float web = (a + b) * 0.5 + a * b;
+
+		vec2 mappedBg = q * bgMap.xy + bgMap.zw;
+		vec3 bg = texture(bgTexture, vec2(mappedBg.x, 1.0 - mappedBg.y)).rgb;
+		float luminance = dot(bg, vec3(0.2126, 0.7152, 0.0722));
+		float lit = smoothstep(darkCut.x, darkCut.y, luminance);
+
+		float height = q.y * repeat.y / tiles.y;
+		float fadeMask = 1.0 - smoothstep(fadeFrom.y, fadeFrom.x, height);
+		float vertexAlpha = color.a * tintColor.a;
+		vec3 outputRgb = web * fadeMask * lit * color.rgb * tintColor.rgb
+			* (intensity * vertexAlpha);
+		return vec4(outputRgb, 1.0);
+	}
+}%

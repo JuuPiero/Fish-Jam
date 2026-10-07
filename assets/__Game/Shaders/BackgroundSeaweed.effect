@@ -1,0 +1,110 @@
+CCEffect %{
+	techniques:
+	- passes:
+		- vert: sprite-vs:vert
+			frag: background-seaweed-fs:frag
+			rasterizerState:
+				cullMode: none
+			depthStencilState:
+				depthTest: false
+				depthWrite: false
+			blendState:
+				targets:
+				- blend: true
+					blendSrc: src_alpha
+					blendDst: one_minus_src_alpha
+					blendSrcAlpha: one
+					blendDstAlpha: one_minus_src_alpha
+			properties:
+				tintColor: { value: [1, 1, 1, 1], editor: { type: color } }
+				maskTexture: { value: black }
+				amplitude: { value: 0.008 }
+				speed: { value: 1.0 }
+				waveLength: { value: 40.0 }
+				phaseX: { value: 9.0 }
+				surge: { value: 0.5 }
+				timeOffset: { value: 0.0 }
+}%
+
+CCProgram sprite-vs %{
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#if USE_LOCAL
+		#include <builtin/uniforms/cc-local>
+	#endif
+	#if SAMPLE_FROM_RT
+		#include <common/common-define>
+	#endif
+
+	in vec3 a_position;
+	in vec2 a_texCoord;
+	in vec4 a_color;
+
+	out vec4 color;
+	out vec2 uv0;
+
+	vec4 vert () {
+		vec4 pos = vec4(a_position, 1.0);
+		#if USE_LOCAL
+			pos = cc_matWorld * pos;
+		#endif
+		#if USE_PIXEL_ALIGNMENT
+			pos = cc_matView * pos;
+			pos.xyz = floor(pos.xyz);
+			pos = cc_matProj * pos;
+		#else
+			pos = cc_matViewProj * pos;
+		#endif
+
+		uv0 = a_texCoord;
+		#if SAMPLE_FROM_RT
+			CC_HANDLE_RT_SAMPLE_FLIP(uv0);
+		#endif
+		color = a_color;
+		return pos;
+	}
+}%
+
+CCProgram background-seaweed-fs %{
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#include <builtin/internal/embedded-alpha>
+
+	in vec2 uv0;
+	in vec4 color;
+
+	#pragma builtin(local)
+	layout(set = 2, binding = 11) uniform sampler2D cc_spriteTexture;
+	uniform sampler2D maskTexture;
+	uniform BackgroundSeaweedParams {
+		vec4 tintColor;
+		float amplitude;
+		float speed;
+		float waveLength;
+		float phaseX;
+		float surge;
+		float timeOffset;
+	};
+
+	vec4 frag () {
+		vec2 uv = uv0;
+		vec3 mask = texture(maskTexture, uv0).rgb;
+
+		if (mask.r > 0.002) {
+			float t = (cc_time.x + timeOffset) * speed;
+			float v = 1.0 - uv0.y;
+			float phase = uv0.x * phaseX;
+
+			float swayValue = sin(t * 1.15 + phase + v * waveLength)
+				+ 0.35 * sin(t * 2.45 + phase * 1.7 + uv0.x * 23.0 + v * waveLength * 1.7);
+			float surgeValue = sin(t * 0.55 + v * 6.0 + uv0.x * 3.0);
+			float dx = mask.r * (mask.b + 0.5) * amplitude
+				* (swayValue * (1.0 - 0.5 * surge) + surgeValue * surge * 1.5);
+			uv.x -= dx;
+		}
+
+		vec4 col = CCSampleWithAlphaSeparated(cc_spriteTexture, uv);
+		col *= color * tintColor;
+		return col;
+	}
+}%

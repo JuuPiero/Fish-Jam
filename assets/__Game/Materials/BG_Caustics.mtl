@@ -1,0 +1,71 @@
+{
+  "__type__": "cc.Material",
+  "_name": "",
+  "_objFlags": 0,
+  "__editorExtras__": {},
+  "_native": "",
+  "_effectAsset": {
+    "__uuid__": "1677b84b-ffd5-41cf-bba9-582ab4ab474f",
+    "__expectedType__": "cc.EffectAsset"
+  },
+  "_techIdx": 0,
+  "_defines": [
+    {}
+  ],
+  "_states": [
+    {
+      "rasterizerState": {},
+      "depthStencilState": {},
+      "blendState": {
+        "targets": [
+          {}
+        ]
+      }
+    }
+  ],
+  "_props": [
+    {
+      "intensity": 0.2,
+      "tiles": {
+        "__type__": "cc.Vec4",
+        "x": 1,
+        "y": 3,
+        "z": 0,
+        "w": 0
+      },
+      "scaleA": 0.5,
+      "scaleB": 0.8,
+      "drift": 3,
+      "perspective": 0.551,
+      "bgTexture": {
+        "__uuid__": "0510ffef-78d4-4e0b-94b8-ebd21dd8a8dc@6c48a",
+        "__expectedType__": "cc.Texture2D"
+      },
+      "bgMap": {
+        "__type__": "cc.Vec4",
+        "x": 1,
+        "y": 0.4,
+        "z": 0,
+        "w": 0
+      },
+      "darkCut": {
+        "__type__": "cc.Vec4",
+        "x": 0.24,
+        "y": 0.55,
+        "z": 0,
+        "w": 0
+      },
+      "distortAmount": -0.07,
+      "distortScale": 2.91,
+      "distortSpeed": -0.1,
+      "fadeFrom": {
+        "__type__": "cc.Vec4",
+        "x": 1,
+        "y": 0.5,
+        "z": 0,
+        "w": 0
+      },
+      "timeOffset": 0.5
+    }
+  ]
+}

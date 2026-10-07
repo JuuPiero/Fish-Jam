@@ -1,0 +1,144 @@
+CCEffect %{
+	techniques:
+	- passes:
+		- vert: bowl-water-vs:vert
+			frag: bowl-water-fs:frag
+			rasterizerState:
+				cullMode: none
+			depthStencilState:
+				depthTest: false
+				depthWrite: false
+			blendState:
+				targets:
+				- blend: true
+					blendSrc: one
+					blendDst: one_minus_src_alpha
+					blendSrcAlpha: one
+					blendDstAlpha: one_minus_src_alpha
+			properties:
+				tintColor: { value: [1, 1, 1, 1], editor: { type: color } }
+				waterLevel: { value: 0.48 }
+				band: { value: 0.2 }
+				halfWidth: { value: 1.26 }
+				edgeFade: { value: 0.7 }
+				waveAmp: { value: 0.03 }
+				waveFreq: { value: 4.5 }
+				waveSpeed: { value: 1.6 }
+				worldPhase: { value: 0.9 }
+				glintStrength: { value: 0.45 }
+				glintFreq: { value: 1.4 }
+				glintSpeed: { value: 0.7 }
+				glintSharp: { value: 10.0 }
+}%
+
+CCProgram bowl-water-vs %{
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#if USE_LOCAL
+		#include <builtin/uniforms/cc-local>
+	#endif
+	#if SAMPLE_FROM_RT
+		#include <common/common-define>
+	#endif
+
+	in vec3 a_position;
+	in vec2 a_texCoord;
+	in vec4 a_color;
+
+	out vec2 uv0;
+	out vec2 localPos;
+	out float worldX;
+	out vec4 color;
+
+	vec4 vert () {
+		vec4 pos = vec4(a_position, 1.0);
+		#if USE_LOCAL
+			vec4 worldPos = cc_matWorld * pos;
+			worldX = worldPos.x;
+			pos = worldPos;
+		#else
+			worldX = pos.x;
+		#endif
+
+		#if USE_PIXEL_ALIGNMENT
+			pos = cc_matView * pos;
+			pos.xyz = floor(pos.xyz);
+			pos = cc_matProj * pos;
+		#else
+			pos = cc_matViewProj * pos;
+		#endif
+
+		localPos = a_position.xy;
+		uv0 = a_texCoord;
+		#if SAMPLE_FROM_RT
+			CC_HANDLE_RT_SAMPLE_FLIP(uv0);
+		#endif
+		color = a_color;
+		return pos;
+	}
+}%
+
+CCProgram bowl-water-fs %{
+	#if __VERSION__ < 300
+		#extension GL_OES_standard_derivatives : enable
+	#endif
+	precision highp float;
+	#include <builtin/uniforms/cc-global>
+	#include <builtin/internal/embedded-alpha>
+
+	in vec2 uv0;
+	in vec2 localPos;
+	in float worldX;
+	in vec4 color;
+
+	#pragma builtin(local)
+	layout(set = 2, binding = 11) uniform sampler2D cc_spriteTexture;
+	uniform BowlWaterParams {
+		vec4 tintColor;
+		float waterLevel;
+		float band;
+		float halfWidth;
+		float edgeFade;
+		float waveAmp;
+		float waveFreq;
+		float waveSpeed;
+		float worldPhase;
+		float glintStrength;
+		float glintFreq;
+		float glintSpeed;
+		float glintSharp;
+	};
+
+	vec4 frag () {
+		vec2 p = localPos;
+		float t = cc_time.x * waveSpeed + worldX * worldPhase;
+		float k = p.x * waveFreq;
+		float wave = sin(k + t) * 0.6
+			+ sin(k * 1.9 - t * 1.3 + 1.7) * 0.4;
+
+		float bandMask = 1.0 - smoothstep(0.0, 1.0, abs(p.y - waterLevel) / band);
+		float sideMask = 1.0 - smoothstep(edgeFade, 1.0, abs(p.x) / halfWidth);
+		float waterMask = bandMask * sideMask;
+
+		vec2 dpx = dFdx(p);
+		vec2 dpy = dFdy(p);
+		float det = dpx.x * dpy.y - dpx.y * dpy.x;
+		vec2 duvdy = vec2(0.0);
+		if (abs(det) > 1e-12) {
+			duvdy = (dFdx(uv0) * -dpy.x + dFdy(uv0) * dpx.x) / det;
+		}
+
+		vec2 sampleUv = uv0 + duvdy * (wave * waveAmp * waterMask);
+		vec4 texColor = CCSampleWithAlphaSeparated(cc_spriteTexture, sampleUv);
+
+		float alpha = texColor.a * color.a * tintColor.a;
+		vec3 rgb = texColor.rgb * color.rgb * tintColor.rgb * alpha;
+
+		float g = cc_time.x * glintSpeed;
+		float glintA = pow(clamp(sin(p.x * glintFreq - g) * 0.5 + 0.5, 0.0, 1.0), glintSharp);
+		float glintB = pow(clamp(sin(p.x * glintFreq * 0.63 + g * 1.4 + 2.0) * 0.5 + 0.5, 0.0, 1.0), glintSharp);
+		rgb = min(rgb * (1.0 + glintStrength * waterMask * (glintA + glintB)), vec3(alpha));
+
+		return vec4(rgb, alpha);
+	}
+}%
