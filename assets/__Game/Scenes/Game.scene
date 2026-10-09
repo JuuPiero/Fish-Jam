@@ -5225,6 +5225,10 @@
       {
         "__uuid__": "71b2b961-5363-4e97-83c2-347b39491381",
         "__expectedType__": "cc.AudioClip"
+      },
+      {
+        "__uuid__": "7b04a01f-340c-4f2f-a921-21a23c751e0f",
+        "__expectedType__": "cc.AudioClip"
       }
     ],
     "poolSize": 10,

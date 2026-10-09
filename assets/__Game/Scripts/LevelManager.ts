@@ -4,12 +4,13 @@ import { OrderManager } from './Order/OrderManager';
 import { SlotManager } from './Slot/SlotManager';
 import { BubbleManager } from './Bubble/BubbleManager';
 import { EDITOR, PREVIEW } from 'cc/env';
+import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 const { ccclass, property } = _decorator;
 
 @ccclass('LevelManager')
 export class LevelManager extends Component {
-    @property({type: [JsonAsset]}) levels: JsonAsset[] = [];
-    @property({type: CCInteger}) levelIndex: number = 0;
+    @playGroundField({type: [JsonAsset]}) levels: JsonAsset[] = [];
+    @playGroundField({type: CCInteger}) levelIndex: number = 0;
     @property({ readonly: true, type: LevelData }) currentLevel: LevelData = null;
     @property(OrderManager) orderManager: OrderManager = null;
     @property(SlotManager) slotManager: SlotManager = null;

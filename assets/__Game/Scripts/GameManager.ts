@@ -56,6 +56,7 @@ export class GameManager extends Component {
     }
 
     onNewGame = () => {
+        AudioManager.instance.playMusic('BGMFish')
         this._isGameOver = false;
         this.progress = 0;
         this.progressTracked = { quarter: false, half: false, threeQuarter: false };
