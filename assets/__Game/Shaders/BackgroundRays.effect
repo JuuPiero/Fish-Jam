@@ -84,6 +84,18 @@ CCProgram background-rays-fs %{
 		float timeOffset;
 	};
 
+	// Keep the sprite sampler at global scope. Cocos 3.8's WebGPU sampler splitter can
+	// fail when the embedded-alpha helper passes sampler2D as a function argument.
+	// This preserves atlas/embedded-alpha support while producing a WebGPU-safe shader.
+	vec4 sampleSprite (vec2 uv) {
+		#if CC_USE_EMBEDDED_ALPHA
+			return vec4(texture(cc_spriteTexture, uv).rgb,
+				texture(cc_spriteTexture, uv + vec2(0.0, 0.5)).r);
+		#else
+			return texture(cc_spriteTexture, uv);
+		#endif
+	}
+
 	vec4 frag () {
 		float t = (cc_time.x + timeOffset) * speed;
 		float fromTop = clamp((1.0 - uv0.y) / vHeight, 0.0, 1.0);
@@ -94,8 +106,7 @@ CCProgram background-rays-fs %{
 		vec2 uvA = vec2(uv0.x + swayA, uv0.y);
 		vec2 uvB = vec2((uv0.x - 0.5) * breathe + 0.5 + swayB, uv0.y);
 
-		vec3 rays = (CCSampleWithAlphaSeparated(cc_spriteTexture, uvA).rgb
-			+ CCSampleWithAlphaSeparated(cc_spriteTexture, uvB).rgb) * 0.65;
+		vec3 rays = (sampleSprite(uvA).rgb + sampleSprite(uvB).rgb) * 0.65;
 
 		float pulseFactor = 1.0 + pulse * sin(t * 1.3 + uv0.x * 9.0 - fromTop * 4.0);
 		float fadeIn = smoothstep(0.0, 0.06, fromTop);
