@@ -71,14 +71,21 @@ class channel_handler {
             // html文件名
             var s_html_name = d_channel.s_html_name;
             {
-                if (s_html_name) {
-                    s_html_name = `${s_channel_name}.html`;
+                if (s_channel_name == "applovin") {
+                    s_html_name = "";
                 }
                 else {
-                    s_html_name = `${s_channel_name}.html`;
+                    if (s_html_name) {
+                        s_html_name = `${s_channel_name}_${s_html_name}.html`;
+                    }
+                    else {
+                        s_html_name = `${s_channel_name}.html`;
+                    }
                 }
                 if (d_hot.s_title) {
-                    s_html_name = `${d_hot.s_title}.html`;
+                    s_html_name = s_html_name
+                        ? `${d_hot.s_title}_${s_html_name}`
+                        : `${d_hot.s_title}.html`;
                 }
             }
             // zip文件名
@@ -91,7 +98,7 @@ class channel_handler {
                     s_zip_name = `${s_channel_name}.zip`;
                 }
                 if (d_hot.s_title) {
-                    s_zip_name = `${d_hot.s_title}_${s_zip_name}.zip`;
+                    s_zip_name = `${d_hot.s_title}_${s_zip_name}`;
                 }
             }
             // #### 渠道脚本
@@ -100,12 +107,20 @@ class channel_handler {
                 // unity 需要设置商店地址，脚本被压缩或混淆了，需要提取出来给平台正则匹配
                 if (config_1.default.d_hot.s_unity_inject_html) {
                     if (s_channel_meta) {
-                        s_channel_meta = config_1.default.d_hot.s_unity_inject_html;
+                        s_channel_meta = config_1.default.d_hot.s_unity_inject_html + "\n" + s_channel_meta;
                     }
                     else {
                         s_channel_meta = config_1.default.d_hot.s_unity_inject_html;
                     }
                 }
+            }
+            // Declare that the generated playable supports both orientations.
+            // Keep a channel-specific declaration when one is already provided.
+            if (!/<meta\b[^>]*\bname\s*=\s*["']ad\.orientation["'][^>]*>/i.test(s_channel_meta)) {
+                const s_orientation_meta = '<meta name="ad.orientation" content="portrait,landscape">';
+                s_channel_meta = s_channel_meta
+                    ? `${s_orientation_meta}\n${s_channel_meta}`
+                    : s_orientation_meta;
             }
             const s_channel_head = this._get_channel_script(s_channel_config_name, "head.js");
             const s_channel_body = this._get_channel_script(s_channel_config_name, "script.js");

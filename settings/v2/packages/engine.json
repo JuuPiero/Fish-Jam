@@ -12,7 +12,7 @@
             "_value": true
           },
           "gfx-webgl2": {
-            "_value": false
+            "_value": true
           },
           "gfx-webgpu": {
             "_value": false
@@ -21,7 +21,7 @@
             "_value": true
           },
           "skeletal-animation": {
-            "_value": true
+            "_value": false
           },
           "3d": {
             "_value": true
@@ -36,10 +36,10 @@
             "_value": false
           },
           "rich-text": {
-            "_value": true
+            "_value": false
           },
           "mask": {
-            "_value": true
+            "_value": false
           },
           "graphics": {
             "_value": true
@@ -57,7 +57,7 @@
             "_value": true
           },
           "physics": {
-            "_value": true,
+            "_value": false,
             "_option": "physics-ammo"
           },
           "physics-ammo": {
@@ -101,7 +101,7 @@
             "_value": true
           },
           "primitive": {
-            "_value": true
+            "_value": false
           },
           "profiler": {
             "_value": true
@@ -131,16 +131,16 @@
             "_value": true
           },
           "websocket": {
-            "_value": true
+            "_value": false
           },
           "websocket-server": {
             "_value": false
           },
           "terrain": {
-            "_value": true
+            "_value": false
           },
           "light-probe": {
-            "_value": true
+            "_value": false
           },
           "tiled-map": {
             "_value": false
@@ -168,10 +168,10 @@
             "_value": false
           },
           "marionette": {
-            "_value": true
+            "_value": false
           },
           "procedural-animation": {
-            "_value": true
+            "_value": false
           },
           "custom-pipeline-post-process": {
             "_value": false
@@ -188,8 +188,7 @@
           }
         },
         "flags": {
-          "LOAD_SPINE_MANUALLY": false,
-          "LOAD_BULLET_MANUALLY": false
+          "LOAD_SPINE_MANUALLY": false
         },
         "includeModules": [
           "2d",
@@ -200,26 +199,17 @@
           "base",
           "custom-pipeline",
           "gfx-webgl",
+          "gfx-webgl2",
           "graphics",
           "intersection-2d",
-          "light-probe",
-          "marionette",
-          "mask",
           "particle",
           "particle-2d",
           "physics-2d-box2d",
-          "physics-ammo",
-          "primitive",
-          "procedural-animation",
           "profiler",
-          "rich-text",
-          "skeletal-animation",
           "spine-4.2",
-          "terrain",
           "tween",
           "ui",
           "video",
-          "websocket",
           "webview"
         ],
         "noDeprecatedFeatures": {
