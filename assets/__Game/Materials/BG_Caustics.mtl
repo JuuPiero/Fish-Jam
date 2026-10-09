@@ -38,7 +38,7 @@
       "drift": 3,
       "perspective": 0.551,
       "bgTexture": {
-        "__uuid__": "0510ffef-78d4-4e0b-94b8-ebd21dd8a8dc@6c48a",
+        "__uuid__": "66ac9e60-20c1-47be-8f01-851a548012be@6c48a",
         "__expectedType__": "cc.Texture2D"
       },
       "bgMap": {

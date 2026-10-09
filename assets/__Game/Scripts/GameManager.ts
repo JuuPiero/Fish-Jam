@@ -61,7 +61,7 @@ export class GameManager extends Component {
         this.progressTracked = { quarter: false, half: false, threeQuarter: false };
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
-        this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
+        this.total = this.levelManager.orderManager.totalOrderCount;
     }
 
     onWinGame = () => {

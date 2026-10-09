@@ -1,0 +1,55 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "cocos-playground",
+    "version": "1.0.0",
+    "author": "thanhhh",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "node ./scripts/build.js",
+        "watch": "tsc -w"
+    },
+    "description": "i18n:cocos-playground.description",
+    "main": "./dist/main.js",
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/jszip": "^3.4.0",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.28.2",
+        "jszip": "^3.10.1",
+        "typescript": "^5.8.2"
+    },
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./runtime/assets",
+                "readonly": true
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:cocos-playground",
+                "label": "i18n:cocos-playground.show_log",
+                "message": "show-log"
+            },
+            {
+                "path": "i18n:cocos-playground",
+                "label": "i18n:cocos-playground.export_playable",
+                "message": "export-playable"
+            }
+        ],
+        "messages": {
+            "show-log": {
+                "methods": [
+                    "showLog"
+                ]
+            },
+            "export-playable": {
+                "methods": [
+                    "exportPlayable"
+                ]
+            }
+        }
+    }
+}

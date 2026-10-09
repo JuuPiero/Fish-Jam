@@ -46,7 +46,6 @@ CCProgram bowl-water-vs %{
 	in vec4 a_color;
 
 	out vec2 uv0;
-	out vec2 localPos;
 	out float worldX;
 	out vec4 color;
 
@@ -68,7 +67,6 @@ CCProgram bowl-water-vs %{
 			pos = cc_matViewProj * pos;
 		#endif
 
-		localPos = a_position.xy;
 		uv0 = a_texCoord;
 		#if SAMPLE_FROM_RT
 			CC_HANDLE_RT_SAMPLE_FLIP(uv0);
@@ -79,15 +77,11 @@ CCProgram bowl-water-vs %{
 }%
 
 CCProgram bowl-water-fs %{
-	#if __VERSION__ < 300
-		#extension GL_OES_standard_derivatives : enable
-	#endif
 	precision highp float;
 	#include <builtin/uniforms/cc-global>
 	#include <builtin/internal/embedded-alpha>
 
 	in vec2 uv0;
-	in vec2 localPos;
 	in float worldX;
 	in vec4 color;
 
@@ -110,8 +104,17 @@ CCProgram bowl-water-fs %{
 	};
 
 	vec4 frag () {
-		vec2 p = localPos;
-		float t = cc_time.x * waveSpeed + worldX * worldPhase;
+		// UI Sprite batching writes world-space positions to a_position.  Recover
+		// the local point from this un-atlased sprite's UV instead; using the
+		// batched position made the water mask evaluate to zero away from origin.
+		// Group_1_01 is 249 x 240 px at 100 pixels per Unity unit.
+		const float PIXELS_PER_UNIT = 100.0;
+		const vec2 BOWL_SIZE_UNITS = vec2(2.49, 2.4);
+		vec2 p = vec2(
+			(uv0.x - 0.5) * BOWL_SIZE_UNITS.x,
+			(0.5 - uv0.y) * BOWL_SIZE_UNITS.y
+		);
+		float t = cc_time.x * waveSpeed + (worldX / PIXELS_PER_UNIT) * worldPhase;
 		float k = p.x * waveFreq;
 		float wave = sin(k + t) * 0.6
 			+ sin(k * 1.9 - t * 1.3 + 1.7) * 0.4;
@@ -120,15 +123,13 @@ CCProgram bowl-water-fs %{
 		float sideMask = 1.0 - smoothstep(edgeFade, 1.0, abs(p.x) / halfWidth);
 		float waterMask = bandMask * sideMask;
 
-		vec2 dpx = dFdx(p);
-		vec2 dpy = dFdy(p);
-		float det = dpx.x * dpy.y - dpx.y * dpy.x;
-		vec2 duvdy = vec2(0.0);
-		if (abs(det) > 1e-12) {
-			duvdy = (dFdx(uv0) * -dpy.x + dFdy(uv0) * dpx.x) / det;
-		}
-
-		vec2 sampleUv = uv0 + duvdy * (wave * waveAmp * waterMask);
+		// Group_1_01 is an un-atlased 249 x 240 sprite.  Shifting its UV directly
+		// is the same robust approach used by BackgroundSeaweed and avoids the
+		// derivative reconstruction being optimised away by the UI sprite path.
+		// Its visible height is 2.4 Unity units at 100 pixels per unit.
+		const float BOWL_HEIGHT_UNITS = 2.4;
+		float waveOffsetY = wave * waveAmp * waterMask / BOWL_HEIGHT_UNITS;
+		vec2 sampleUv = uv0 + vec2(0.0, waveOffsetY);
 		vec4 texColor = CCSampleWithAlphaSeparated(cc_spriteTexture, sampleUv);
 
 		float alpha = texColor.a * color.a * tintColor.a;

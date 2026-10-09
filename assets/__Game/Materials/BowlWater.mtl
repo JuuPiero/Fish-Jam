@@ -24,6 +24,19 @@
     }
   ],
   "_props": [
-    {}
+    {
+      "waterLevel": 0.5,
+      "band": 0.295,
+      "halfWidth": 1.25,
+      "edgeFade": 0.471,
+      "waveAmp": 0.06,
+      "waveFreq": 2,
+      "waveSpeed": 2,
+      "worldPhase": 5,
+      "glintStrength": 1.4,
+      "glintFreq": 1.6,
+      "glintSpeed": 0.46,
+      "glintSharp": 15.5
+    }
   ]
 }

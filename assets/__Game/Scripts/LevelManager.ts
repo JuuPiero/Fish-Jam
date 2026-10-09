@@ -1,15 +1,16 @@
-import { _decorator, Component, JsonAsset, Node } from 'cc';
+import { _decorator, CCInteger, Component, JsonAsset, Node } from 'cc';
 import { LevelData } from './Data/LevelData';
 import { OrderManager } from './Order/OrderManager';
 import { SlotManager } from './Slot/SlotManager';
 import { BubbleManager } from './Bubble/BubbleManager';
 import { EDITOR, PREVIEW } from 'cc/env';
+import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 const { ccclass, property } = _decorator;
 
 @ccclass('LevelManager')
 export class LevelManager extends Component {
-    @property(JsonAsset) levels: JsonAsset[] = [];
-    @property levelIndex: number = 0;
+    @playGroundField({type: [JsonAsset]}) levels: JsonAsset[] = [];
+    @playGroundField({type: CCInteger}) levelIndex: number = 0;
     @property({ readonly: true, type: LevelData }) currentLevel: LevelData = null;
     @property(OrderManager) orderManager: OrderManager = null;
     @property(SlotManager) slotManager: SlotManager = null;
@@ -22,8 +23,8 @@ export class LevelManager extends Component {
             this.logData();
         }
         this.bubbleManager?.initialize(this.currentLevel);
-        this.orderManager?.initialize(this.currentLevel);
         this.slotManager?.initialize();
+        this.orderManager?.initialize(this.currentLevel, this.bubbleManager, this.slotManager);
     }
 
     logData() {

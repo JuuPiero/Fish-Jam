@@ -10,12 +10,12 @@ const { ccclass, property } = _decorator;
 @ccclass('Order')
 export class Order extends Component {
     @property({readonly: true}) id: number = -1;
+    @property({readonly: true}) requiredCount: number = 3;
     @property(Node) slotsPos: Node[] = []
     @property(Node) lidPos: Node = null;
     @property(Node) targetVisual: Node = null;
 
     @property(Label) countlabel: Label = null;
-
 
     @property({ tooltip: 'Total seconds for the whole complete-then-spawn pop (anticipation + shrink + pause + bounce-in + settle)' })
     popDuration: number = 1.3;
@@ -45,18 +45,23 @@ export class Order extends Component {
 
 
     get isComplete(): boolean {
-        return this._deliveredCount >= this.slotsPos.length;
+        return this._deliveredCount >= this.requiredCount;
     }
 
     // True once every slot already has a fish either landed or currently flying toward it, OR
     // the order is still mid pop-in - either way, this (not isComplete) is what should stop new
     // fish from being routed here.
     get isFullyClaimed(): boolean {
-        return this._isPoppingIn || this._claimedCount >= this.slotsPos.length;
+        return this._isPoppingIn || this._claimedCount >= this.requiredCount;
     }
 
-    initialize(id: number) {
+    get remainingCount(): number {
+        return Math.max(0, this.requiredCount - this._claimedCount);
+    }
+
+    initialize(id: number, requiredCount: number = this.slotsPos.length) {
         this.id = id;
+        this.setRequiredCount(requiredCount);
         this._claimedCount = 0;
         this._deliveredCount = 0;
         this.updateUI();
@@ -67,8 +72,9 @@ export class Order extends Component {
     // State updates immediately so routing logic (isFullyClaimed/claimNextSlot) keeps working
     // right away; only the visuals play a shrink-then-grow pop, swapping the slot icons over to
     // the new id at the bottom of the shrink so the change happens while the order is smallest.
-    reset(id: number) {
+    reset(id: number, requiredCount: number = this.slotsPos.length) {
         this.id = id;
+        this.setRequiredCount(requiredCount);
         this._claimedCount = 0;
         this._deliveredCount = 0;
         this.updateUI();
@@ -76,7 +82,14 @@ export class Order extends Component {
     }
 
     updateUI() {
-        this.countlabel.string = this._claimedCount + '/3';
+        this.countlabel.string = this._claimedCount + '/' + this.requiredCount;
+    }
+
+    private setRequiredCount(requiredCount: number): void {
+        this.requiredCount = Math.max(1, Math.min(requiredCount, this.slotsPos.length));
+        this.slotsPos.forEach((slotNode, index) => {
+            slotNode.active = index < this.requiredCount;
+        });
     }
 
     private applySlotVisuals() {
