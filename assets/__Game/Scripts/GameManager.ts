@@ -13,6 +13,7 @@ import { AudioManager } from '../../_iKame/Scripts/Audio/AudioManager';
 import { PREVIEW } from 'cc/env';
 import { PlayableAdsManager } from '../../_iKame/Scripts/PlayableAdsManager';
 import { NavigationContainer } from '../../_iKame/Scripts/Navigation/NavigationContainer';
+import { FishCountUI } from './UI/FishCountUI';
 const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
@@ -23,6 +24,10 @@ export class GameManager extends Component {
     @property({ type: Node, tooltip: 'Top-level node (e.g. the canvas root) fish are reparented onto while flying to a slot/order' })
     flyLayer: Node = null;
     private _isGameOver = false;
+    public get IsGameOver(): boolean {
+        return this._isGameOver;
+    }
+
     protected onLoad(): void {
         ServiceLocator.register(GameManager, this)
         ServiceLocator.register(LevelManager, this.levelManager)
@@ -63,6 +68,9 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
         this.total = this.levelManager.orderManager.totalOrderCount;
+
+        ServiceLocator.get(FishCountUI).updateUI()
+
     }
 
     onWinGame = () => {

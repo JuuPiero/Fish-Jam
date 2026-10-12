@@ -60,6 +60,7 @@ export class Fish extends Component {
     private _pathLength = 0;
     private _landingRotationTween: Tween<Node> | null = null;
     private _landingScaleTween: Tween<Node> | null = null;
+    private _inBubbleScale = 1;
 
     protected onLoad(): void {
         this._button = this.getComponent(Button)
@@ -101,6 +102,7 @@ export class Fish extends Component {
         // instead of whatever size the hover happened to leave it at.
         this._hoverTween?.stop();
         this._hoverTween = null;
+        this._inBubbleScale = 1;
         this.node.setScale(1, 1, 1);
         this.node.angle = 0;
 
@@ -115,8 +117,9 @@ export class Fish extends Component {
             return;
         }
         this._hoverTween?.stop();
+        const hoverScale = this._inBubbleScale * Fish.HOVER_SCALE.x;
         this._hoverTween = tween(this.node)
-            .to(Fish.HOVER_DURATION, { scale: Fish.HOVER_SCALE }, { easing: 'quadOut' })
+            .to(Fish.HOVER_DURATION, { scale: new Vec3(hoverScale, hoverScale, 1) }, { easing: 'quadOut' })
             .start();
     }
 
@@ -125,8 +128,17 @@ export class Fish extends Component {
         // clicked, it must still shrink back so it doesn't fly off stuck at the hover size.
         this._hoverTween?.stop();
         this._hoverTween = tween(this.node)
-            .to(Fish.HOVER_DURATION, { scale: Vec3.ONE }, { easing: 'quadOut' })
+            .to(Fish.HOVER_DURATION, { scale: new Vec3(this._inBubbleScale, this._inBubbleScale, 1) }, { easing: 'quadOut' })
             .start();
+    }
+
+    // Visual-only enlargement applied by the bubble while this fish sits inside it. Kept
+    // separate from the node's "real" scale (always 1 once flying or landed) so
+    // Bubble.calculateRadius()/getSize() - which read `visual.scale`, untouched here - size
+    // and lay out the bubble exactly as if the fish were unscaled.
+    setInBubbleScale(value: number) {
+        this._inBubbleScale = Math.max(0.01, value);
+        this.node.setScale(this._inBubbleScale, this._inBubbleScale, 1);
     }
 
     setInteractable(value: boolean) {
@@ -167,6 +179,7 @@ export class Fish extends Component {
         // into its slot. This reads much better for the game's jars and glass tube than a
         // scale-only punch at a stationary point.
         this.node.setParent(slot, true);
+        this._inBubbleScale = 1;
         this.node.setScale(Vec3.ONE);
         // Restore the authored Spine pose after flight. Never keep procedural bone offsets on
         // a fish that has landed and now acts as a persistent order/slot visual.

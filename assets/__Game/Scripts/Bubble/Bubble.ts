@@ -20,6 +20,9 @@ export class Bubble extends Component {
 
     @property({ readonly: true, type: [Fish] }) fishes: Fish[] = []
 
+    @property({ tooltip: 'Visual scale applied to fish while they remain inside this bubble' })
+    fishScale: number = 1.2;
+
     // A small visual overlap makes the fish cluster feel fuller and lets the bubble stay compact.
     private static readonly FISH_OVERLAP = 8;
     // Keep small groups compact; the packing routine grows the bubble only when a particular
@@ -344,6 +347,7 @@ export class Bubble extends Component {
             fish.initialize(fishId);
         }
         this.calculateRadius();
+        this.fishes.forEach(fish => fish.setInBubbleScale(this.fishScale));
         this.startIdleBounce();
     }
 

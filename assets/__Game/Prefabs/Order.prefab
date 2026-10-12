@@ -120,8 +120,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 0.8,
-      "y": 0.8,
+      "x": 0.9,
+      "y": 0.9,
       "z": 0.8
     },
     "_mobility": 0,
@@ -587,7 +587,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "spriteFrame",
+    "_name": "Water",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -621,8 +621,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 0.85,
-      "y": 0.85,
+      "x": 0.95,
+      "y": 0.95,
       "z": 1
     },
     "_mobility": 0,
@@ -1790,6 +1790,7 @@
       "__id__": 92
     },
     "id": -1,
+    "requiredCount": 3,
     "slotsPos": [
       {
         "__id__": 9

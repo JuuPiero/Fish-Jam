@@ -456,6 +456,7 @@
       "__id__": 2
     },
     "fishes": [],
+    "fishScale": 1.1,
     "fishGapMin": -2,
     "fishGapMax": 10,
     "bubbleEdgePaddingMin": 10,
@@ -468,6 +469,10 @@
     "idleRotationChance": 0.6,
     "idleRotationDuration": 20,
     "idleRotationStartDelay": 4,
+    "arrangeDelay": 0.25,
+    "arrangeDuration": 0.25,
+    "removePunchScale": 0.15,
+    "removePunchDuration": 0.45,
     "_id": ""
   },
   {
