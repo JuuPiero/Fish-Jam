@@ -1,4 +1,4 @@
-import { _decorator, Component, EventKeyboard, KeyCode, Node } from 'cc';
+import { _decorator, Component, EventKeyboard, KeyCode, Node, RealCurve } from 'cc';
 import { EventBus } from '../../_iKame/Scripts/EventBus';
 import { GameEvents } from './GameEvents';
 import { LevelManager } from './LevelManager';
@@ -23,6 +23,12 @@ export class GameManager extends Component {
     @property(LevelManager) levelManager: LevelManager = null;
     @property({ type: Node, tooltip: 'Top-level node (e.g. the canvas root) fish are reparented onto while flying to a slot/order' })
     flyLayer: Node = null;
+
+
+    @property(RealCurve) diffCurve: RealCurve = new RealCurve()
+
+
+
     private _isGameOver = false;
     public get IsGameOver(): boolean {
         return this._isGameOver;

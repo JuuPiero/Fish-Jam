@@ -3,6 +3,8 @@ import { LevelData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Bubble } from './Bubble';
+import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
+import { GameEvents } from '../GameEvents';
 const { ccclass, property } = _decorator;
 
 interface PendingBubble {
@@ -32,8 +34,24 @@ export class BubbleManager extends Component {
     @property({ tooltip: 'Number of lanes considered when packing bubbles.' })
     spawnColumns: number = 48;
 
+    @property({ tooltip: "Unity's maxGroupsOnScreen. The opening batch fills up to this many " +
+                          'bubbles at once; the rest queue up and spawn one at a time, below the ' +
+                          'screen, whenever a bubble pops and the board drops under this count.' })
+    maxBubblesOnScreen: number = 10;
+
     private _pendingBubbles: PendingBubble[] = [];
+    // Bubbles past the opening batch: built and measured like the rest, but left inactive and
+    // off the board until trySpawnNextFromQueue lets them in.
+    private _queue: PendingBubble[] = [];
     private _stagingNode: Node | null = null;
+
+    protected onEnable(): void {
+        EventBus.on(GameEvents.BUBBLE_REMOVED, this.onBubbleRemoved);
+    }
+
+    protected onDisable(): void {
+        EventBus.off(GameEvents.BUBBLE_REMOVED, this.onBubbleRemoved);
+    }
 
     initialize(levelData: LevelData) {
         this.clearBubbles();
@@ -44,7 +62,7 @@ export class BubbleManager extends Component {
         }
 
         // Bubble radii depend on their fish layout. Measure each one while inactive so every
-        // bubble can be packed before they are all activated together.
+        // bubble can be packed before any of them are activated.
         this._stagingNode = new Node('PendingBubbleStaging');
         this._stagingNode.setParent(this.node);
 
@@ -71,13 +89,69 @@ export class BubbleManager extends Component {
             index++;
         }
 
-        const placements = this.planAllBubbles();
+        // Unity's opening batch: pack as many bubbles as the board allows into the play zone
+        // right away, in one frame. Everything after stays queued - inactive, parented straight
+        // onto this.node so it survives past the staging node below - and trickles in later.
+        const openingCount = Math.min(this._pendingBubbles.length, this.maxBubblesOnScreen);
+        const opening = this._pendingBubbles.slice(0, openingCount);
+        this._queue = this._pendingBubbles.slice(openingCount);
+        for (const pending of this._queue) {
+            pending.node.setParent(this.node);
+        }
+
+        const placements = this.planBubbles(opening);
         for (const placement of placements) {
             this.activateBubble(placement.pending, placement.x, placement.y);
         }
         this._pendingBubbles = [];
         this._stagingNode?.destroy();
         this._stagingNode = null;
+    }
+
+    private onBubbleRemoved = (): void => {
+        this.trySpawnNextFromQueue();
+    };
+
+    // Unity's "spawns below the screen, in the edge column with the most room, once there is
+    // room": releases one bubble from the queue when the board has dropped under the cap.
+    private trySpawnNextFromQueue(): void {
+        if (this._queue.length === 0 || this.getActiveBubbleCount() >= this.maxBubblesOnScreen) {
+            return;
+        }
+
+        const pending = this._queue.shift();
+        const { x, y } = this.findSpawnPosition(
+            pending.bubble.radius,
+            this.spawnPosNode.worldPosition.y,
+            this.getActiveBubbleBounds(),
+        );
+        this.activateBubble(pending, x, y);
+    }
+
+    private getActiveBubbleCount(): number {
+        let count = 0;
+        for (const child of this.node.children) {
+            if (child.active && child.getComponent(Bubble)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private getActiveBubbleBounds(): { x: number; y: number; radius: number }[] {
+        const bounds: { x: number; y: number; radius: number }[] = [];
+        for (const child of this.node.children) {
+            if (!child.active) {
+                continue;
+            }
+            const bubble = child.getComponent(Bubble);
+            if (!bubble) {
+                continue;
+            }
+            const pos = child.worldPosition;
+            bounds.push({ x: pos.x, y: pos.y, radius: bubble.radius });
+        }
+        return bounds;
     }
 
     // Unity's CollectReachableItemCounts equivalent for the Cocos order picker. Only fish still
@@ -99,6 +173,7 @@ export class BubbleManager extends Component {
 
     private clearBubbles(): void {
         this._pendingBubbles = [];
+        this._queue = [];
         this._stagingNode = null;
         for (const child of this.node.children.slice()) {
             child.removeFromParent();
@@ -106,50 +181,63 @@ export class BubbleManager extends Component {
         }
     }
 
-    private planAllBubbles(): PlannedBubble[] {
-        const spawnPos = this.spawnPosNode.worldPosition;
-        const left = this.leftBorder.worldPosition.x;
-        const right = this.rightBorder.worldPosition.x;
+    // Packs a list of not-yet-placed bubbles from the top down: each one lands as high as it can
+    // in whichever lane the already-planned bubbles leave the most room. Once the visible tank is
+    // full, the same packing continues below SpawnPos - there is no Cocos mask there, so a bubble
+    // placed that deep is simply invisible until buoyancy carries it up.
+    private planBubbles(pendings: PendingBubble[]): PlannedBubble[] {
         const top = this.getTopBorderY();
         const planned: PlannedBubble[] = [];
 
-        const columns = Math.max(1, Math.floor(this.spawnColumns));
-        for (const pending of this._pendingBubbles) {
-            const radius = pending.bubble.radius;
-            const minX = left + radius + this.bubbleGap;
-            const maxX = right - radius - this.bubbleGap;
-            let bestX = spawnPos.x;
-            let bestY = Number.NEGATIVE_INFINITY;
-
-            for (let column = 0; column < columns; column++) {
-                const t = columns === 1 ? 0.5 : column / (columns - 1);
-                const x = minX <= maxX
-                    ? minX + (maxX - minX) * t
-                    : (left + right) * 0.5;
-                let y = top - radius - this.bubbleGap;
-
-                // Solve the circle intersection in this lane, then keep the highest candidate.
-                for (const other of planned) {
-                    const requiredDistance = radius + other.pending.bubble.radius + this.bubbleGap;
-                    const dx = Math.abs(x - other.x);
-                    if (dx >= requiredDistance) {
-                        continue;
-                    }
-                    y = Math.min(y, other.y - Math.sqrt(requiredDistance * requiredDistance - dx * dx));
-                }
-
-                if (y > bestY) {
-                    bestX = x;
-                    bestY = y;
-                }
-            }
-
-            // Once the visible tank is full, the same packing continues below SpawnPos. There is
-            // no Cocos mask there, but every bubble is still activated immediately and floats up.
-            planned.push({ pending, x: bestX, y: bestY });
+        for (const pending of pendings) {
+            const obstacles = planned.map(p => ({ x: p.x, y: p.y, radius: p.pending.bubble.radius }));
+            const { x, y } = this.findSpawnPosition(pending.bubble.radius, top, obstacles);
+            planned.push({ pending, x, y });
         }
 
         return planned;
+    }
+
+    // Shared by the opening pack (ceiling = the top border, obstacles = the batch planned so
+    // far) and the queue refill (ceiling = SpawnPos, obstacles = whatever is live on the board
+    // right now): for each lane, find how high a circle of this radius could sit above `ceilingY`
+    // without overlapping an obstacle, then take the lane that allows the highest (least
+    // obstructed) result - Unity's "the edge column with the most room".
+    private findSpawnPosition(
+        radius: number,
+        ceilingY: number,
+        obstacles: { x: number; y: number; radius: number }[],
+    ): { x: number; y: number } {
+        const left = this.leftBorder.worldPosition.x;
+        const right = this.rightBorder.worldPosition.x;
+        const minX = left + radius + this.bubbleGap;
+        const maxX = right - radius - this.bubbleGap;
+        const columns = Math.max(1, Math.floor(this.spawnColumns));
+
+        let bestX = (left + right) * 0.5;
+        let bestY = Number.NEGATIVE_INFINITY;
+
+        for (let column = 0; column < columns; column++) {
+            const t = columns === 1 ? 0.5 : column / (columns - 1);
+            const x = minX <= maxX ? minX + (maxX - minX) * t : (left + right) * 0.5;
+            let y = ceilingY - radius - this.bubbleGap;
+
+            for (const other of obstacles) {
+                const requiredDistance = radius + other.radius + this.bubbleGap;
+                const dx = Math.abs(x - other.x);
+                if (dx >= requiredDistance) {
+                    continue;
+                }
+                y = Math.min(y, other.y - Math.sqrt(requiredDistance * requiredDistance - dx * dx));
+            }
+
+            if (y > bestY) {
+                bestX = x;
+                bestY = y;
+            }
+        }
+
+        return { x: bestX, y: bestY };
     }
 
     private activateBubble(pending: PendingBubble, x: number, y: number): void {

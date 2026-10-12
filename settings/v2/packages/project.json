@@ -18,6 +18,10 @@
     {
       "name": "VFX",
       "value": 1
+    },
+    {
+      "name": "TUTORIAL",
+      "value": 2
     }
   ]
 }

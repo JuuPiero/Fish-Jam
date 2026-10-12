@@ -5,6 +5,8 @@ import { GameConfigSA } from '../Data/GameConfigSA';
 import { Fish } from '../Fish/Fish';
 import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
 import { VFXManager } from '../VFXManager';
+import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
+import { GameEvents } from '../GameEvents';
 const { ccclass, property } = _decorator;
 
 @ccclass('Bubble')
@@ -318,8 +320,14 @@ export class Bubble extends Component {
             .to(0.05, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadOut' })
             .to(0.18, { scale: new Vec3(1.5, 1.5, 1) }, { easing: 'quadOut' })
             .call(() => {
+                // Deactivated before destroy() (not relied on to happen synchronously) and
+                // before the event fires, so BubbleManager.getActiveBubbleCount - which checks
+                // node.active while iterating its still-live children - already reads this
+                // bubble as gone the instant a listener handles BUBBLE_REMOVED.
+                this.node.active = false
                 // effect.destroy()
                 this.node.destroy()
+                EventBus.emit(GameEvents.BUBBLE_REMOVED)
             })
             .start();
 
@@ -441,4 +449,20 @@ export class Bubble extends Component {
     }
 
 
+
+    // Adds (enable) or removes the TUTORIAL bit across this bubble's whole subtree - its own
+    // glass sprite, the bubbleContainer, and every fish and their own visuals - so the spotlight
+    // camera (CameraTutorial) sees the whole bubble as highlighted, not just the fish floating
+    // loose. layerBit must be the TUTORIAL layer's actual bit value (see TutorialController,
+    // which reads it off tutOverlay.layer rather than guessing a hardcoded number).
+    setHighlight(enable: boolean, layerBit: number) {
+        this.applyLayerBit(this.node, layerBit, enable);
+    }
+
+    private applyLayerBit(node: Node, layerBit: number, enable: boolean) {
+        node.layer = enable ? (node.layer | layerBit) : (node.layer & ~layerBit);
+        for (const child of node.children) {
+            this.applyLayerBit(child, layerBit, enable);
+        }
+    }
 }

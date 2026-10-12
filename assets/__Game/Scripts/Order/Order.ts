@@ -186,6 +186,20 @@ export class Order extends Component {
         }
         return this.isComplete;
     }
+
+    // Same contract as Bubble.setHighlight: adds/removes the TUTORIAL bit across this order's
+    // whole subtree (targetVisual, slots, any delivered fish parked in them, the count label) so
+    // the spotlight camera sees the whole bowl, not just one piece of it.
+    setHighlight(enable: boolean, layerBit: number) {
+        this.applyLayerBit(this.node, layerBit, enable);
+    }
+
+    private applyLayerBit(node: Node, layerBit: number, enable: boolean) {
+        node.layer = enable ? (node.layer | layerBit) : (node.layer & ~layerBit);
+        for (const child of node.children) {
+            this.applyLayerBit(child, layerBit, enable);
+        }
+    }
 }
 
 
