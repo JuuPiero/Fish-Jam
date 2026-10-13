@@ -1,4 +1,4 @@
-import { _decorator, Button, Component, EventMouse, math, Node, sp, Sprite, tween, Tween, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, CCString, Component, EventMouse, math, Node, sp, Sprite, tween, Tween, UITransform, Vec3 } from 'cc';
 import { Order } from '../Order/Order';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
@@ -77,11 +77,15 @@ export class Fish extends Component {
         this._button.node.off(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
         this._button.node.off(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
     }
+    
+
     initialize(id: number) {
         this.id = id;
-        // const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
-        // this.visual.getComponent(Sprite).spriteFrame = spriteFrame;
-        this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
+        // const runtimeData = this.fishAnim.skeletonData.getRuntimeData();
+        // const names = runtimeData.skins.map(s => s.name)
+        // const match = ServiceLocator.get(FishConfigSA).fishes.match(/^sprite_(\d+)$/);
+
+        this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).getAnimationName(id));
         // Match the visual to this sprite's real (trimmed) size instead of whatever size the
         // prefab happened to be baked with - fish types vary a lot in size, and that size is
         // what Bubble.calculateRadius() reads via getSize(), so bubbles size themselves

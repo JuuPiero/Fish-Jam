@@ -40,6 +40,8 @@ export class TutorialController extends Component {
     private _done = false;
 
     @property(Node) tutOverlay: Node = null;
+    @property(Node) countUI: Node = null;
+
     @property(Bubble) targetBubble: Bubble = null;
     @property(Order) targetOrder: Order = null;
 
@@ -174,11 +176,18 @@ export class TutorialController extends Component {
 
         order.setHighlight(true, bit);
         this.targetOrder = order;
+
+        // countUI (the fish-count HUD) isn't a per-pick target like bubble/order - it's the same
+        // node for the whole level - but it needs the same treatment so it too shows through
+        // tutOverlay via CameraTutorial instead of getting dimmed with the rest of the board.
+        if (this.countUI) {
+            this.applyLayerBit(this.countUI, bit, true);
+        }
     }
 
-    // Removes the TUTORIAL bit from the previously-highlighted bubble/order. Guarded with isValid
-    // - the bubble can have popped, or the order moved on to a new id and been reset, while it
-    // was still wearing the bit.
+    // Removes the TUTORIAL bit from the previously-highlighted bubble/order/countUI. Guarded with
+    // isValid - the bubble can have popped, or the order moved on to a new id and been reset,
+    // while it was still wearing the bit.
     private clearHighlight() {
         const bit = this.tutorialLayerBit;
         if (this.targetBubble?.node?.isValid) {
@@ -187,8 +196,20 @@ export class TutorialController extends Component {
         if (this.targetOrder?.node?.isValid) {
             this.targetOrder.setHighlight(false, bit);
         }
+        if (this.countUI) {
+            this.applyLayerBit(this.countUI, bit, false);
+        }
         this.targetBubble = null;
         this.targetOrder = null;
+    }
+
+    // Same contract as Bubble.setHighlight/Order.setHighlight, for a plain Node like countUI that
+    // has no component of its own to own this logic.
+    private applyLayerBit(node: Node, layerBit: number, enable: boolean) {
+        node.layer = enable ? (node.layer | layerBit) : (node.layer & ~layerBit);
+        for (const child of node.children) {
+            this.applyLayerBit(child, layerBit, enable);
+        }
     }
 
     private playPointTween() {

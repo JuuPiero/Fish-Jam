@@ -1,0 +1,428 @@
+skeleton.png
+	size: 2048, 2048
+	filter: Linear, Linear
+hlw_1
+	bounds: 1168, 1915, 174, 131
+hlw_2
+	bounds: 36, 1841, 177, 138
+hlw_3
+	bounds: 611, 1899, 183, 147
+hlw_4
+	bounds: 1682, 1897, 158, 149
+hlw_5
+	bounds: 2, 1587, 155, 138
+hlw_6
+	bounds: 1715, 1045, 145, 123
+sprite_0000
+	bounds: 1518, 1891, 162, 155
+	offsets: 0, 4, 162, 159
+sprite_0001
+	bounds: 1842, 1896, 150, 158
+	rotate: 90
+sprite_0002
+	bounds: 796, 1912, 185, 134
+sprite_0003
+	bounds: 734, 1786, 150, 165
+	rotate: 90
+sprite_0004
+	bounds: 983, 1912, 183, 134
+sprite_0005
+	bounds: 1672, 1637, 172, 140
+sprite_0006
+	bounds: 1499, 1659, 171, 140
+sprite_0007
+	bounds: 215, 1839, 155, 153
+sprite_0008
+	bounds: 1598, 1772, 172, 137
+sprite_0009
+	bounds: 1391, 1601, 177, 132
+	rotate: 90
+sprite_0010
+	bounds: 332, 1754, 158, 147
+	rotate: 90
+sprite_0011
+	bounds: 1344, 1912, 172, 134
+sprite_0012
+	bounds: 456, 1830, 153, 149
+sprite_0013
+	bounds: 882, 1723, 143, 159
+	rotate: 90
+sprite_0014
+	bounds: 1217, 1660, 172, 132
+sprite_0015
+	bounds: 706, 1644, 174, 130
+sprite_0016
+	bounds: 1565, 1531, 170, 132
+sprite_0017
+	bounds: 304, 1236, 163, 137
+sprite_0018
+	bounds: 1868, 1550, 178, 124
+sprite_0019
+	bounds: 1125, 1557, 178, 123
+sprite_0020
+	bounds: 452, 1671, 139, 157
+	rotate: 90
+sprite_0021
+	bounds: 328, 1575, 169, 129
+	rotate: 90
+sprite_0022
+	bounds: 1772, 1771, 173, 126
+sprite_0023
+	bounds: 2, 1727, 181, 120
+sprite_0024
+	bounds: 1028, 1795, 176, 123
+sprite_0025
+	bounds: 998, 1483, 154, 138
+	rotate: 90
+sprite_0026
+	bounds: 1766, 1301, 155, 137
+	rotate: 90
+sprite_0027
+	bounds: 185, 1676, 163, 130
+sprite_0028
+	bounds: 1138, 1411, 147, 144
+sprite_0029
+	bounds: 568, 1447, 155, 136
+sprite_0030
+	bounds: 1289, 1482, 163, 129
+sprite_0031
+	bounds: 697, 1364, 169, 124
+sprite_0032
+	bounds: 955, 1369, 187, 112
+sprite_0033
+	bounds: 1639, 1395, 160, 130
+sprite_0034
+	bounds: 1454, 1450, 183, 113
+sprite_0035
+	bounds: 472, 1343, 145, 142
+	rotate: 90
+sprite_0036
+	bounds: 2, 1464, 168, 121
+sprite_0037
+	bounds: 600, 1267, 158, 128
+	rotate: 90
+sprite_0038
+	bounds: 2, 1331, 154, 131
+sprite_0039
+	bounds: 1428, 1198, 176, 114
+sprite_0040
+	bounds: 878, 1588, 163, 123
+sprite_0041
+	bounds: 158, 1299, 147, 136
+sprite_0042
+	bounds: 851, 1131, 158, 126
+sprite_0043
+	bounds: 1120, 1282, 154, 128
+sprite_0044
+	bounds: 1445, 1315, 148, 133
+sprite_0045
+	bounds: 1287, 1354, 156, 126
+sprite_0046
+	bounds: 172, 1437, 168, 117
+sprite_0047
+	bounds: 735, 1219, 145, 135
+	rotate: 90
+sprite_0048
+	bounds: 738, 1508, 134, 146
+	rotate: 90
+sprite_0049
+	bounds: 1011, 1205, 154, 127
+	rotate: 90
+sprite_0050
+	bounds: 1897, 1248, 153, 127
+	rotate: 90
+sprite_0051
+	bounds: 872, 1272, 153, 127
+sprite_0052
+	bounds: 328, 1375, 136, 142
+	rotate: 90
+sprite_0053
+	bounds: 1276, 1224, 150, 128
+sprite_0054
+	bounds: 223, 1161, 145, 132
+sprite_0055
+	bounds: 2, 1087, 159, 120
+sprite_0056
+	bounds: 355, 1089, 150, 127
+sprite_0057
+	bounds: 1561, 1121, 174, 109
+sprite_0058
+	bounds: 1870, 1127, 159, 119
+sprite_0059
+	bounds: 1005, 1078, 150, 125
+sprite_0060
+	bounds: 69, 1206, 152, 123
+sprite_0061
+	bounds: 491, 1020, 153, 122
+	rotate: 90
+sprite_0062
+	bounds: 309, 978, 162, 114
+sprite_0063
+	bounds: 1725, 1170, 143, 129
+sprite_0064
+	bounds: 625, 994, 134, 136
+	rotate: 90
+sprite_0065
+	bounds: 737, 1084, 133, 136
+	rotate: 90
+sprite_0066
+	bounds: 1614, 958, 141, 128
+	rotate: 90
+sprite_0067
+	bounds: 163, 1056, 170, 104
+sprite_0068
+	bounds: 763, 926, 158, 111
+sprite_0069
+	bounds: 1156, 1035, 159, 109
+sprite_0070
+	bounds: 1595, 1274, 119, 145
+	rotate: 90
+sprite_0071
+	bounds: 153, 942, 153, 112
+sprite_0072
+	bounds: 1317, 988, 146, 117
+sprite_0073
+	bounds: 1042, 963, 159, 103
+sprite_0074
+	bounds: 1455, 938, 150, 112
+sprite_0075
+	bounds: 924, 909, 132, 124
+	rotate: 90
+sprite_0076
+	bounds: 1187, 908, 160, 100
+sprite_0077
+	bounds: 2, 980, 149, 105
+sprite_0078
+	bounds: 289, 884, 97, 143
+	offsets: 0, 0, 100, 143
+	rotate: 90
+sprite_0079
+	bounds: 1349, 893, 88, 142
+	rotate: 90
+sprite_0080
+	bounds: 566, 1585, 140, 170
+	rotate: 90
+sprite_0081
+	bounds: 312, 1979, 308, 67
+sprite_0082
+	bounds: 1737, 1513, 186, 118
+sprite_0083
+	bounds: 591, 1123, 144, 125
+sprite_0084
+	bounds: 1744, 943, 170, 91
+sprite_0086
+	bounds: 1043, 1667, 172, 126
+sprite_0087
+	bounds: 159, 1556, 163, 118
+sprite_0088
+	bounds: 602, 1729, 159, 130
+	rotate: 90
+sprite_0089
+	bounds: 427, 1476, 143, 139
+	rotate: 90
+sprite_0090
+	bounds: 1133, 1156, 148, 124
+sprite_0090-1
+	bounds: 1386, 1785, 172, 113
+sprite_0091
+	bounds: 1283, 1107, 158, 115
+sprite_0092
+	bounds: 1862, 1024, 166, 101
+sprite_0093
+	bounds: 1880, 1403, 166, 111
+sprite_0094
+	bounds: 870, 1022, 174, 107
+	offsets: 0, 0, 174, 125
+sprite_0095
+	bounds: 2, 1979, 308, 67
+sprite_0096
+	bounds: 1443, 1052, 181, 106
+sprite_0097
+	bounds: 457, 1175, 166, 132
+	rotate: 90
+sprite_0098
+	bounds: 868, 1400, 186, 125
+	rotate: 90
+sprite_0099
+	bounds: 1206, 1794, 178, 116
+sprite_0100
+	bounds: 1917, 1673, 164, 129
+	rotate: 90
+sprite_0101
+	bounds: 1914, 899, 132, 113
+sprite_0102
+	bounds: 462, 922, 210, 96
+vay_0000
+	bounds: 2, 1218, 66, 70
+vay_001
+	bounds: 694, 923, 74, 75
+	offsets: 0, 0, 76, 75
+vay_0010
+	bounds: 494, 1641, 32, 28
+vay_0011
+	bounds: 1362, 1778, 30, 37
+vay_0013
+	bounds: 459, 1647, 33, 29
+vay_0014
+	bounds: 133, 1586, 28, 26
+vay_0015
+	bounds: 1360, 1631, 29, 32
+vay_0016
+	bounds: 1898, 1659, 24, 26
+	offsets: 0, 3, 24, 29
+vay_0018
+	bounds: 185, 1788, 32, 29
+vay_0019
+	bounds: 1400, 1901, 34, 19
+vay_002
+	bounds: 1995, 1967, 51, 36
+vay_0020
+	bounds: 159, 1650, 23, 26
+	offsets: 0, 1, 24, 27
+vay_0021
+	bounds: 1560, 1851, 32, 39
+vay_0022
+	bounds: 875, 1881, 25, 29
+vay_0023
+	bounds: 2, 1582, 33, 32
+vay_0024
+	bounds: 1505, 2021, 25, 25
+vay_0025
+	bounds: 35, 1847, 32, 30
+vay_0026
+	bounds: 1941, 1868, 27, 26
+vay_0027
+	bounds: 226, 1810, 35, 27
+vay_0028
+	bounds: 296, 1813, 34, 32
+vay_0029
+	bounds: 2, 1838, 25, 24
+vay_003
+	bounds: 1314, 1913, 38, 26
+vay_0030
+	bounds: 2, 1864, 36, 41
+	offsets: 0, 2, 36, 43
+vay_0031
+	bounds: 523, 1810, 35, 18
+vay_0032
+	bounds: 1195, 1791, 31, 31
+vay_0033
+	bounds: 1997, 1891, 39, 37
+vay_0034
+	bounds: 1830, 2015, 34, 31
+vay_0035
+	bounds: 1338, 1617, 27, 27
+	offsets: 5, 11, 32, 38
+vay_0036
+	bounds: 350, 1731, 30, 32
+vay_0037
+	bounds: 734, 1760, 24, 24
+vay_0038
+	bounds: 1374, 1725, 34, 32
+vay_0039
+	bounds: 1525, 1609, 33, 32
+vay_004
+	bounds: 1499, 1905, 40, 40
+vay_0040
+	bounds: 528, 1638, 33, 31
+vay_0041
+	bounds: 1149, 1916, 28, 28
+vay_0042
+	bounds: 1996, 1927, 44, 38
+vay_0043
+	bounds: 2, 1718, 31, 36
+	offsets: 0, 0, 34, 36
+vay_0045
+	bounds: 882, 1711, 30, 30
+vay_0046
+	bounds: 1947, 1835, 36, 31
+vay_0047
+	bounds: 1557, 1642, 28, 23
+vay_0049
+	bounds: 734, 1642, 24, 23
+vay_005
+	bounds: 1671, 1671, 35, 28
+vay_0050
+	bounds: 2, 1907, 32, 29
+vay_0051
+	bounds: 157, 1699, 31, 30
+vay_0052
+	bounds: 2019, 1671, 27, 24
+vay_0053
+	bounds: 1560, 1814, 34, 35
+vay_0054
+	bounds: 475, 1620, 26, 25
+vay_0055
+	bounds: 176, 1668, 30, 30
+vay_0056
+	bounds: 1840, 1648, 34, 33
+vay_0058
+	bounds: 478, 1807, 32, 22
+vay_0059
+	bounds: 1305, 1629, 31, 29
+vay_006
+	bounds: 1525, 1643, 30, 33
+vay_0060
+	bounds: 1392, 1755, 33, 31
+vay_0061
+	bounds: 901, 1851, 28, 22
+vay_0062
+	bounds: 2007, 1847, 33, 42
+vay_0063
+	bounds: 1043, 1629, 28, 36
+	offsets: 0, 3, 30, 46
+vay_0064
+	bounds: 1043, 1783, 26, 26
+vay_0066
+	bounds: 1545, 1582, 25, 24
+vay_0067
+	bounds: 372, 1906, 39, 29
+vay_0068
+	bounds: 566, 1801, 34, 34
+vay_0069
+	bounds: 1663, 1912, 34, 20
+vay_007
+	bounds: 190, 1819, 34, 35
+vay_0071
+	bounds: 263, 1810, 30, 27
+vay_0072
+	bounds: 1820, 1630, 30, 31
+vay_0073
+	bounds: 1380, 1700, 27, 23
+	offsets: 0, 1, 27, 25
+vay_0074
+	bounds: 1516, 1582, 27, 29
+vay_0075
+	bounds: 1753, 1779, 30, 28
+vay_0076
+	bounds: 1471, 1901, 30, 26
+vay_0077
+	bounds: 1088, 1637, 34, 28
+vay_0078
+	bounds: 1977, 1853, 28, 45
+vay_0079
+	bounds: 997, 1865, 29, 45
+vay_008
+	bounds: 1198, 1691, 36, 32
+vay_0080
+	bounds: 1820, 1900, 32, 30
+vay_0082
+	bounds: 1986, 2003, 56, 43
+vay_009
+	bounds: 869, 1591, 30, 31
+vay_0094
+	bounds: 364, 1937, 48, 40
+vay_0094_2
+	bounds: 1846, 1673, 65, 96
+	offsets: 0, 8, 76, 104
+vay_0096
+	bounds: 53, 917, 115, 62
+vay_0097
+	bounds: 2, 1937, 48, 40
+vay_0102
+	bounds: 902, 1870, 93, 41
+vay_hlw_1
+	bounds: 709, 1875, 37, 36
+	offsets: 0, 0, 50, 36
+vay_hlw_6
+	bounds: 416, 1932, 38, 46

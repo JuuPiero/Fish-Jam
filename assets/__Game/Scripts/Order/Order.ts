@@ -96,7 +96,7 @@ export class Order extends Component {
         // Slots now use the delivered Fish node itself as their visual. Remove the previous
         // delivered fish only while this order is hidden during its reset pop.
         this.clearDeliveredFishes();
-        this.targetVisual.getComponentInChildren(sp.Skeleton).setSkin(ServiceLocator.get(FishConfigSA).fishes[this.id]);
+        this.targetVisual.getComponentInChildren(sp.Skeleton).setSkin(ServiceLocator.get(FishConfigSA).getAnimationName(this.id));
     }
 
     private clearDeliveredFishes() {
