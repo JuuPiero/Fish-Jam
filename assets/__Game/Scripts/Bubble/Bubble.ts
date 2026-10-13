@@ -53,6 +53,21 @@ export class Bubble extends Component {
     @property({ tooltip: 'Minimum speed (units/s) a bubble must have on contact to play the bounce effect' })
     bounceSpeedThreshold: number = 40;
 
+    @property({ tooltip: 'Speed (units/s) at which a collision bounce reaches full intensity. Speeds between bounceSpeedThreshold and this are lerped between the min/max squash and kick below.' })
+    bounceMaxSpeed: number = 140;
+
+    @property({ tooltip: 'Squash fraction for a bounce right at bounceSpeedThreshold (gentlest hit that still bounces) - 0.1 matches the old fixed-strength bounce, so this is the floor, not softer than before' })
+    bounceSquashMin: number = 0.1;
+
+    @property({ tooltip: 'Squash fraction for a bounce at/above bounceMaxSpeed (hardest hit) - a real, satisfying jelly squish' })
+    bounceSquashMax: number = 0.3;
+
+    @property({ tooltip: 'Rotation kick (degrees) for a bounce right at bounceSpeedThreshold' })
+    bounceKickMin: number = 10;
+
+    @property({ tooltip: 'Rotation kick (degrees) for a bounce at/above bounceMaxSpeed' })
+    bounceKickMax: number = 28;
+
     // A wall of circles all pushed the same way by a constant force can still wedge into a
     // stable arch and stop moving well before reaching the top - classic granular jamming.
     // Multiplying gravity's effect on the bubble (instead of just relying on the project's
@@ -369,22 +384,36 @@ export class Bubble extends Component {
         if (speedSqr < this.bounceSpeedThreshold * this.bounceSpeedThreshold) {
             return;
         }
-        this.bounce();
+
+        const speed = Math.sqrt(speedSqr);
+        const speedRange = Math.max(1, this.bounceMaxSpeed - this.bounceSpeedThreshold);
+        const intensity = Math.min(1, (speed - this.bounceSpeedThreshold) / speedRange);
+        this.bounce(intensity);
     }
 
-    // Juicy jelly "boing" on impact: a couple of damped squash/stretch oscillations plus a
-    // matching rotation wobble. Both only ever touch `visual`; the root node continues to own
-    // physics/collider state, while fish stay in their separate bubbleContainer.
-    bounce() {
+    // Juicy jelly "boing" on impact: the same four-stage decaying squash/stretch oscillation plus
+    // matching rotation wobble as always (quick overshoot, smaller correction back, smaller
+    // correction forward, elastic settle - all in 0.42s total), just scaled by `intensity` (0..1,
+    // how hard the hit was) instead of a single fixed amount. Both only ever touch `visual`; the
+    // root node continues to own physics/collider state, while fish stay in their own bubbleContainer.
+    // (A direction-aware version that rotated visual to the impact axis and leaned on a longer
+    // elastic tween was tried and reverted - it read as sluggish and the per-hit rotation snap
+    // looked janky against bubbles that touch almost constantly. Scale alone already reads as a
+    // harder vs. softer hit; keep it that simple.)
+    bounce(intensity: number = 1) {
         this.stopIdleBounce();
         this._bounceTween?.stop();
         this._wobbleTween?.stop();
 
+        // k scales every stage by the same proportion, so the whole decay shape - not just the
+        // first beat - gets stronger or weaker together. k=1 reproduces the original fixed values
+        // (1.1/0.92 peak) exactly; bounceSquashMin/Max tune the range intensity maps onto.
+        const k = (this.bounceSquashMin + (this.bounceSquashMax - this.bounceSquashMin) * intensity) / 0.1;
         const size = this.radius * 2;
         this._bounceTween = tween(this._visualTransform)
-            .to(0.06, { contentSize: new Size(size * 1.1, size * 0.92) }, { easing: 'quadOut' })
-            .to(0.09, { contentSize: new Size(size * 0.96, size * 1.05) }, { easing: 'sineInOut' })
-            .to(0.11, { contentSize: new Size(size * 1.02, size * 0.98) }, { easing: 'sineInOut' })
+            .to(0.06, { contentSize: new Size(size * (1 + 0.10 * k), size * (1 - 0.08 * k)) }, { easing: 'quadOut' })
+            .to(0.09, { contentSize: new Size(size * (1 - 0.04 * k), size * (1 + 0.05 * k)) }, { easing: 'sineInOut' })
+            .to(0.11, { contentSize: new Size(size * (1 + 0.02 * k), size * (1 - 0.02 * k)) }, { easing: 'sineInOut' })
             .to(0.16, { contentSize: new Size(size, size) }, { easing: 'elasticOut' })
             .call(() => {
                 this._bounceTween = null;
@@ -392,7 +421,8 @@ export class Bubble extends Component {
             })
             .start();
 
-        const kick = (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 8);
+        const kick = (this.bounceKickMin + (this.bounceKickMax - this.bounceKickMin) * intensity)
+            * (Math.random() < 0.5 ? 1 : -1);
         this._wobbleTween = tween(this.visual)
             .to(0.06, { angle: kick }, { easing: 'quadOut' })
             .to(0.09, { angle: -kick * 0.5 }, { easing: 'sineInOut' })

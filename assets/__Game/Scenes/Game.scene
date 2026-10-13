@@ -3561,7 +3561,7 @@
     "topBorder": null,
     "bubbleGap": 20,
     "spawnColumns": 48,
-    "maxBubblesOnScreen": 10,
+    "maxBubblesOnScreen": 13,
     "_id": "40aPZ/JzxBnL7ixRqwBoDP"
   },
   {
@@ -5380,17 +5380,17 @@
   {
     "__type__": "cc.RealCurve",
     "_times": [
-      0.0024390243902439024,
-      0.9951219512195122
+      0,
+      0.9804878048780488
     ],
     "_values": [
       {
         "__type__": "cc.RealKeyframeValue",
         "interpolationMode": 2,
         "tangentWeightMode": 0,
-        "value": 0,
+        "value": -0.10606060606060606,
         "rightTangent": 0.03697691197691198,
-        "rightTangentWeight": 0.3311204462444949,
+        "rightTangentWeight": 0.3270526274945625,
         "leftTangent": 0.03697691197691198,
         "leftTangentWeight": 0,
         "easingMethod": 0,
@@ -5400,11 +5400,11 @@
         "__type__": "cc.RealKeyframeValue",
         "interpolationMode": 2,
         "tangentWeightMode": 0,
-        "value": -0.015151515151515152,
+        "value": -0.12878787878787878,
         "rightTangent": 0,
         "rightTangentWeight": 0,
         "leftTangent": 0,
-        "leftTangentWeight": 0.3308943089430894,
+        "leftTangentWeight": 0.3268292682926829,
         "easingMethod": 0,
         "__editorExtras__": null
       }

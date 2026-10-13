@@ -36,8 +36,11 @@ export class BubbleManager extends Component {
 
     @property({ tooltip: "Unity's maxGroupsOnScreen. The opening batch fills up to this many " +
                           'bubbles at once; the rest queue up and spawn one at a time, below the ' +
-                          'screen, whenever a bubble pops and the board drops under this count.' })
-    maxBubblesOnScreen: number = 10;
+                          'screen, whenever a bubble pops and the board drops under this count. ' +
+                          "Unity can get away with a small cap because PlayZoneMask hides its " +
+                          "below-screen overflow outright; Cocos has no such mask, only physical " +
+                          "depth, so this is set higher to still read as a full board." })
+    maxBubblesOnScreen: number = 18;
 
     private _pendingBubbles: PendingBubble[] = [];
     // Bubbles past the opening batch: built and measured like the rest, but left inactive and
