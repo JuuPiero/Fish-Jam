@@ -264,7 +264,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "8cc5ebe8-5c5c-47ca-bf41-81f0f8d0f907@f9941",
+      "__uuid__": "70807cd6-ce18-4fc1-a7e2-2b73660d464e@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
@@ -459,9 +459,14 @@
     "fishScale": 1.1,
     "fishGapMin": -2,
     "fishGapMax": 5,
-    "bubbleEdgePaddingMin": 2,
-    "bubbleEdgePaddingMax": 10,
+    "bubbleEdgePaddingMin": 5,
+    "bubbleEdgePaddingMax": 20,
     "bounceSpeedThreshold": 5,
+    "bounceMaxSpeed": 140,
+    "bounceSquashMin": 0.1,
+    "bounceSquashMax": 0.3,
+    "bounceKickMin": 10,
+    "bounceKickMax": 28,
     "buoyancyScale": 1.6,
     "friction": 0,
     "idleBounceScale": 1.015,

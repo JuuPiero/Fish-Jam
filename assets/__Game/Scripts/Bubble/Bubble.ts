@@ -457,17 +457,17 @@ export class Bubble extends Component {
 
         // Vary whether, when, how fast, and in which direction each bubble rotates so groups
         // never look synchronized. Some bubbles intentionally remain still.
-        if (Math.random() < this.idleRotationChance) {
-            const rotationDuration = this.idleRotationDuration * (0.8 + Math.random() * 0.6);
-            const rotationAngle = Math.random() < 0.5 ? 360 : -360;
-            this._idleWobbleTween = tween(this.visual)
-                .delay(idleDelay + Math.random() * this.idleRotationStartDelay)
-                .repeatForever(
-                    tween()
-                        .by(rotationDuration, { angle: rotationAngle }, { easing: 'linear' }),
-                )
-                .start();
-        }
+        // if (Math.random() < this.idleRotationChance) {
+        //     const rotationDuration = this.idleRotationDuration * (0.8 + Math.random() * 0.6);
+        //     const rotationAngle = Math.random() < 0.5 ? 360 : -360;
+        //     this._idleWobbleTween = tween(this.visual)
+        //         .delay(idleDelay + Math.random() * this.idleRotationStartDelay)
+        //         .repeatForever(
+        //             tween()
+        //                 .by(rotationDuration, { angle: rotationAngle }, { easing: 'linear' }),
+        //         )
+        //         .start();
+        // }
     }
 
     private stopIdleBounce() {

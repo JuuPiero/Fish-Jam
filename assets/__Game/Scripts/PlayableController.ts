@@ -1,3 +1,5 @@
+import { Color } from 'cc';
+import { Camera } from 'cc';
 import { _decorator, Component, Node, Vec2, Vec3 } from 'cc';
 import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 const { ccclass, property } = _decorator;
@@ -11,6 +13,9 @@ export class PlayableController extends Component {
 
     @property(Node) orderManager: Node = null;
 
+    @property(Camera) mainCam: Camera = null;
+
+    @playGroundField({type: Color, label: "BG Color", group: "PLAYABLE"}) camColor: Color = Color.WHITE;
 
     @playGroundField({type: Vec2, label: "Vị trí BG", group: "PLAYABLE"}) bgPosition: Vec2 = new Vec2(0, -52.773)
     @playGroundField({type: Vec2, label: "Scale BG", group: "PLAYABLE"}) bgtScale: Vec2  = new Vec2(1.3, 1.3)
@@ -30,6 +35,8 @@ export class PlayableController extends Component {
 
         this.slotManager.setPosition(new Vec3(this.slotPosition.x, this.slotPosition.y, 1));
         this.orderManager.setPosition(new Vec3(this.orderPosition.x, this.orderPosition.y, 1));
+
+        this.mainCam.clearColor = this.camColor;
 
     }
 }

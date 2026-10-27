@@ -138,8 +138,8 @@
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
-      "x": 0.44805890205598803,
-      "y": 0.27677363722900844
+      "x": 0.5,
+      "y": 0.5
     },
     "_id": ""
   },
@@ -173,7 +173,7 @@
       "__uuid__": "386c0a3a-e008-48ac-94f6-01a72bf50f52",
       "__expectedType__": "sp.SkeletonData"
     },
-    "defaultSkin": "sprite_00104",
+    "defaultSkin": "sprite_00016",
     "defaultAnimation": "",
     "_premultipliedAlpha": false,
     "_timeScale": 1,

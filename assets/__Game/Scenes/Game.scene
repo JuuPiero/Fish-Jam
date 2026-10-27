@@ -5930,6 +5930,16 @@
     "orderManager": {
       "__id__": 46
     },
+    "mainCam": {
+      "__id__": 7
+    },
+    "camColor": {
+      "__type__": "cc.Color",
+      "r": 10,
+      "g": 127,
+      "b": 232,
+      "a": 255
+    },
     "bgPosition": {
       "__type__": "cc.Vec2",
       "x": 0,
