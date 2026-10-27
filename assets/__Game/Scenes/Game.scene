@@ -1975,9 +1975,9 @@
       "__id__": 50
     },
     "spacing": 230,
-    "count": 10,
+    "count": 15,
     "maxSameOrderInARow": 2,
-    "beltSpeed": 50,
+    "beltSpeed": 60,
     "leftLimitNode": {
       "__id__": 63
     },
@@ -5537,9 +5537,13 @@
       {
         "__uuid__": "2be048d7-fa50-47f7-a78b-ce4fb009e9d1",
         "__expectedType__": "cc.JsonAsset"
+      },
+      {
+        "__uuid__": "625c532a-e3f7-4c98-9e95-510cea625dea",
+        "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 5,
+    "levelIndex": 6,
     "currentLevel": null,
     "orderManager": {
       "__id__": 71
