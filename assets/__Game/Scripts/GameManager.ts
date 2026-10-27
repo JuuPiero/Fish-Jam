@@ -198,7 +198,11 @@ export class GameManager extends Component {
 
         const order = orderManager.findMatchingOrder(fish.id);
         if (order) {
+            // Freeze the belt for the whole flight - Fish.flyToOrder() snapshots this order's
+            // slot position once at the start, so it must not keep scrolling underneath the fish.
+            orderManager.beginFlight();
             fish.flyToOrder(order, this.flyLayer, () => {
+                orderManager.endFlight();
                 if (!order.isComplete) {
                     return;
                 }

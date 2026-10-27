@@ -1,4 +1,4 @@
-import { _decorator, Component, instantiate, Node, Prefab, tween, Tween, Vec3 } from 'cc';
+import { _decorator, Component, instantiate, Node, Prefab, Vec3 } from 'cc';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Order } from './Order';
@@ -14,13 +14,24 @@ const { ccclass, property } = _decorator;
 export class OrderManager extends Component {
     @property(Node) orderContainer: Node = null;
     @property spacing: number = 0;
-    @property count: number = 4;
+
+    @property({ tooltip: 'How many order slots exist on the belt at once - set higher than what fits on screen (e.g. 6+) so there is always a queued order ready to scroll into view' })
+    count: number = 4;
 
     @property({ tooltip: 'Unity GeneralDifficulty.maxSameOrderInARow fallback.' })
     maxSameOrderInARow: number = 2;
 
-    @property({ tooltip: 'Seconds for the row to slide into its re-centered layout when the visible count changes' })
-    relayoutDuration: number = 0.25;
+    @property({ tooltip: 'Conveyor scroll speed, in units/second, moving right to left' })
+    beltSpeed: number = 60;
+
+    @property({ type: Node, tooltip: 'Marks where an order wraps back around to the right side of the belt - drag this to wherever "off-screen left" should be' })
+    leftLimitNode: Node = null;
+
+    @property({ type: Node, tooltip: 'Left edge of the zone an order must be within for fish to be able to fly to it - independent of leftLimitNode (the belt wrap point)' })
+    interactableLeftNode: Node = null;
+
+    @property({ type: Node, tooltip: 'Right edge of the zone an order must be within for fish to be able to fly to it' })
+    interactableRightNode: Node = null;
 
     @property({ type: [Order], readonly: true }) orders: Order[] = [];
 
@@ -36,11 +47,53 @@ export class OrderManager extends Component {
     private _bubbleManager: BubbleManager | null = null;
     private _slotManager: SlotManager | null = null;
 
-    // Kept separate from Order's pop tween: moving the row must not stop an order reset animation.
-    private _relayoutTweens = new Map<Order, Tween<Node>>();
+    // spacing * however many order slots actually spawned - an order wrapping past the left
+    // limit jumps forward by exactly this much, so the belt's spacing stays even through the wrap
+    // instead of snapping to some fixed "start" position.
+    private _beltLength = 0;
+
+    // leftLimitNode/interactableLeftNode/interactableRightNode's X, converted once into
+    // orderContainer's local space so the per-frame belt math below stays simple local-X
+    // arithmetic instead of a world<->local conversion for every order every frame.
+    private _leftLimit = 0;
+    private _interactableLeft = 0;
+    private _interactableRight = 0;
+
+    // How many fish are currently mid-flight toward an order. The belt freezes entirely while
+    // this is above 0 - Fish.flyToOrder() snapshots its destination once at the start of the
+    // flight, so a moving order would leave the fish landing wherever that slot used to be.
+    private _activeFlights = 0;
+
+    // The belt stays frozen until the player's very first tap - same moment TutorialController
+    // marks its hint as done - so the hand has something stationary to point at instead of a
+    // target that immediately starts sliding away.
+    private _beltEnabled = false;
 
     get totalOrderCount(): number {
         return this._totalOrderCount;
+    }
+
+    protected onEnable(): void {
+        EventBus.on(GameEvents.FISH_CLICKED, this.onFishClicked);
+    }
+
+    protected onDisable(): void {
+        EventBus.off(GameEvents.FISH_CLICKED, this.onFishClicked);
+    }
+
+    private onFishClicked = () => {
+        this._beltEnabled = true;
+    }
+
+    // Call right before sending a fish toward an order (see GameManager.routeFish), and
+    // endFlight() once it lands - pairs of these may overlap if more than one fish is flying at
+    // once, so the belt only resumes once every in-flight fish has arrived.
+    beginFlight() {
+        this._activeFlights++;
+    }
+
+    endFlight() {
+        this._activeFlights = Math.max(0, this._activeFlights - 1);
     }
 
     initialize(levelData: LevelData, bubbleManager?: BubbleManager, slotManager?: SlotManager): void {
@@ -50,12 +103,23 @@ export class OrderManager extends Component {
         }
 
         this.orders = [];
-        this._relayoutTweens.clear();
         this._pendingCounts.clear();
         this._bubbleManager = bubbleManager ?? null;
         this._slotManager = slotManager ?? null;
         this._lastCreatedId = -1;
         this._sameOrderRun = 0;
+        this._beltEnabled = false;
+
+        const leftLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(leftLocal, this.leftLimitNode.worldPosition);
+        this._leftLimit = leftLocal.x;
+
+        const interactableLeftLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(interactableLeftLocal, this.interactableLeftNode.worldPosition);
+        this._interactableLeft = interactableLeftLocal.x;
+        const interactableRightLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(interactableRightLocal, this.interactableRightNode.worldPosition);
+        this._interactableRight = interactableRightLocal.x;
 
         for (const bubble of levelData.bubbles) {
             for (const fishId of bubble.fishes) {
@@ -65,20 +129,54 @@ export class OrderManager extends Component {
         this._totalOrderCount = Array.from(this._pendingCounts.values())
             .reduce((total, fishCount) => total + Math.ceil(fishCount / OrderManager.FISH_PER_ORDER), 0);
 
+        this._beltLength = this.spacing * this.count;
+
         const orderPrefab = ServiceLocator.get(GameConfigSA).orderPrefab;
         for (let slotIndex = 0; slotIndex < this.count; slotIndex++) {
-            if (!this.createOrder(orderPrefab)) {
+            if (!this.createOrder(orderPrefab, this._leftLimit + slotIndex * this.spacing)) {
                 break;
             }
         }
-
-        this.relayoutOrders(false);
     }
 
-    // The first visible order of this type that still has an unclaimed slot. Claimed fish are
-    // already on the way, so a second rapid tap must not reserve the same placeholder.
+    update(dt: number) {
+        if (!this._beltEnabled || this._beltLength <= 0 || this._activeFlights > 0) {
+            return;
+        }
+        const delta = this.beltSpeed * dt;
+        for (const order of this.orders) {
+            const pos = order.node.position;
+            const wasVisible = this.isInView(pos.x);
+            let x = pos.x - delta;
+            if (x < this._leftLimit) {
+                x += this._beltLength;
+            }
+            order.node.setPosition(x, pos.y, pos.z);
+
+            // Only just now scrolled into view - it may already have a fish waiting on the
+            // bench for its id from before it was visible. GameManager's ORDER_READY handler
+            // pulls any it finds, exactly as it does right after an order resets to a new id.
+            if (!wasVisible && this.isInView(x)) {
+                EventBus.emit(GameEvents.ORDER_READY, order);
+            }
+        }
+    }
+
+    // True while an order sits between interactableLeftNode and interactableRightNode - the only
+    // zone fish are allowed to fly into it from. This is independent of leftLimitNode (which only
+    // controls where an order wraps back around the belt), so it can be a narrower window
+    // wherever on screen actually makes sense for gameplay.
+    private isInView(x: number): boolean {
+        return x >= this._interactableLeft && x <= this._interactableRight;
+    }
+
+    // The first order of this type that still has an unclaimed slot AND is currently scrolled
+    // into view, if any. Claimed fish are already on the way, so a second rapid tap must not
+    // reserve the same placeholder. An off-screen order (still queued up on the belt) isn't a
+    // valid target yet - see update(), which pulls any waiting bench fish once it actually
+    // scrolls into view.
     findMatchingOrder(fishId: number): Order | null {
-        return this.orders.find(order => order.id === fishId && !order.isFullyClaimed) ?? null;
+        return this.orders.find(order => order.id === fishId && !order.isFullyClaimed && this.isInView(order.node.position.x)) ?? null;
     }
 
     completeOrder(order: Order): number | null {
@@ -101,9 +199,7 @@ export class OrderManager extends Component {
         }
 
         this.orders.splice(index, 1);
-        this._relayoutTweens.delete(order);
         order.node.destroy();
-        this.relayoutOrders(true);
         return null;
     }
 
@@ -138,7 +234,7 @@ export class OrderManager extends Component {
         return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
     }
 
-    private createOrder(orderPrefab: Prefab): boolean {
+    private createOrder(orderPrefab: Prefab, x: number): boolean {
         const id = this.pickNextOrderId();
         if (id === null) {
             return false;
@@ -147,6 +243,7 @@ export class OrderManager extends Component {
         const requiredCount = this.reserveOrderFish(id);
         const orderNode = instantiate(orderPrefab);
         orderNode.setParent(this.orderContainer);
+        orderNode.setPosition(x, 0, 0);
 
         const order = orderNode.getComponent(Order);
         if (!order) {
@@ -205,23 +302,5 @@ export class OrderManager extends Component {
     private recordCreatedOrder(id: number): void {
         this._sameOrderRun = id === this._lastCreatedId ? this._sameOrderRun + 1 : 1;
         this._lastCreatedId = id;
-    }
-
-    private relayoutOrders(animate: boolean): void {
-        const startX = -(this.orders.length - 1) * this.spacing * 0.5;
-        this.orders.forEach((order, index) => {
-            const targetX = startX + index * this.spacing;
-            this._relayoutTweens.get(order)?.stop();
-            if (animate) {
-                const slide = tween(order.node)
-                    .to(this.relayoutDuration, { position: new Vec3(targetX, 0, 0) }, { easing: 'quadOut' })
-                    .call(() => { this._relayoutTweens.delete(order); })
-                    .start();
-                this._relayoutTweens.set(order, slide);
-            } else {
-                this._relayoutTweens.delete(order);
-                order.node.setPosition(targetX, 0, 0);
-            }
-        });
     }
 }
