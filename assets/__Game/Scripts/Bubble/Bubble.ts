@@ -5,6 +5,8 @@ import { GameConfigSA } from '../Data/GameConfigSA';
 import { Fish } from '../Fish/Fish';
 import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
 import { VFXManager } from '../VFXManager';
+import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
+import { GameEvents } from '../GameEvents';
 const { ccclass, property } = _decorator;
 
 @ccclass('Bubble')
@@ -19,6 +21,9 @@ export class Bubble extends Component {
 
 
     @property({ readonly: true, type: [Fish] }) fishes: Fish[] = []
+
+    @property({ tooltip: 'Visual scale applied to fish while they remain inside this bubble' })
+    fishScale: number = 1.2;
 
     // A small visual overlap makes the fish cluster feel fuller and lets the bubble stay compact.
     private static readonly FISH_OVERLAP = 8;
@@ -48,6 +53,21 @@ export class Bubble extends Component {
     @property({ tooltip: 'Minimum speed (units/s) a bubble must have on contact to play the bounce effect' })
     bounceSpeedThreshold: number = 40;
 
+    @property({ tooltip: 'Speed (units/s) at which a collision bounce reaches full intensity. Speeds between bounceSpeedThreshold and this are lerped between the min/max squash and kick below.' })
+    bounceMaxSpeed: number = 140;
+
+    @property({ tooltip: 'Squash fraction for a bounce right at bounceSpeedThreshold (gentlest hit that still bounces) - 0.1 matches the old fixed-strength bounce, so this is the floor, not softer than before' })
+    bounceSquashMin: number = 0.1;
+
+    @property({ tooltip: 'Squash fraction for a bounce at/above bounceMaxSpeed (hardest hit) - a real, satisfying jelly squish' })
+    bounceSquashMax: number = 0.3;
+
+    @property({ tooltip: 'Rotation kick (degrees) for a bounce right at bounceSpeedThreshold' })
+    bounceKickMin: number = 10;
+
+    @property({ tooltip: 'Rotation kick (degrees) for a bounce at/above bounceMaxSpeed' })
+    bounceKickMax: number = 28;
+
     // A wall of circles all pushed the same way by a constant force can still wedge into a
     // stable arch and stop moving well before reaching the top - classic granular jamming.
     // Multiplying gravity's effect on the bubble (instead of just relying on the project's
@@ -74,13 +94,32 @@ export class Bubble extends Component {
     @property({ tooltip: 'Maximum extra delay before an idle rotation starts' })
     idleRotationStartDelay: number = 4;
 
+    @property({ tooltip: 'Wait after the latest fish leaves before arranging the remaining fish.' })
+    arrangeDelay: number = 0.25;
+
+    @property({ tooltip: 'Seconds for remaining fish to move into their new ring positions.' })
+    arrangeDuration: number = 0.25;
+
+    @property({ tooltip: 'Extra root scale at the peak when a fish leaves. The root owns the CircleCollider2D, so this also pushes neighboring bubbles.' })
+    removePunchScale: number = 0.15;
+
+    @property({ tooltip: 'Seconds for the bubble to expand and settle after a fish leaves.' })
+    removePunchDuration: number = 0.45;
+
     private _rigidBody: RigidBody2D | null = null;
     private _bounceTween: Tween<UITransform> | null = null;
     private _idleBounceTween: Tween<UITransform> | null = null;
     private _idleWobbleTween: Tween<Node> | null = null;
     private _wobbleTween: Tween<Node> | null = null;
+    private _removePunchTween: Tween<Node> | null = null;
+    private _arrangeDelayTween: Tween<Node> | null = null;
+    private _arrangeFishTweens: Tween<Node>[] = [];
+    private _fishLayoutAngle = 0;
+    private _fishLayoutSpacing = 1;
+    private _baseRootScale = new Vec3(1, 1, 1);
 
     protected onLoad(): void {
+        this._baseRootScale.set(this.node.scale);
         this._visualTransform = this.visual.getComponent(UITransform);
         this._collider = this.getComponent(CircleCollider2D);
         this._rigidBody = this.getComponent(RigidBody2D);
@@ -114,17 +153,19 @@ export class Bubble extends Component {
             return Math.max(size.width, size.height) * 0.5;
         });
         const maxFishRadius = Math.max(...fishRadii);
-        const bubbleRadius = this.positionFishesInCircle(fishRadii, maxFishRadius);
+        this._fishLayoutSpacing = 1 + Math.random() * 0.06;
+        this._fishLayoutAngle = Math.random() * Math.PI * 2;
+        const bubbleRadius = this.positionFishesInCircle(fishRadii, maxFishRadius, false);
 
         this.radius = bubbleRadius;
         this._visualTransform.setContentSize(bubbleRadius * 2, bubbleRadius * 2);
         this._collider.radius = bubbleRadius;
     }
 
-    private positionFishesInCircle(fishRadii: number[], maxFishRadius: number): number {
+    private positionFishesInCircle(fishRadii: number[], maxFishRadius: number, animate: boolean): number {
         const count = this.fishes.length;
         if (count === 1) {
-            this.fishes[0].node.setPosition(0, 0, 0);
+            this.moveFishTo(this.fishes[0], new Vec3(), animate);
             return Math.max(Bubble.MIN_RADIUS, maxFishRadius + this._bubbleEdgePadding);
         }
 
@@ -137,13 +178,12 @@ export class Bubble extends Component {
             ringRadius = Math.max(ringRadius, minCenterDistance / (2 * Math.sin(angleStep * 0.5)));
         }
 
-        // Randomize only the orientation and a tiny amount of spacing; the group remains a
-        // centered, recognizable circle instead of scattering through the entire bubble.
-        ringRadius *= 1 + Math.random() * 0.06;
-        const startAngle = Math.random() * Math.PI * 2;
+        // Preserve the initial orientation and spacing after each removal, so the remaining
+        // fish settle inward instead of visibly rerolling to a brand new arrangement.
+        ringRadius *= this._fishLayoutSpacing;
         this.fishes.forEach((fish, index) => {
-            const angle = startAngle + angleStep * index;
-            fish.node.setPosition(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0);
+            const angle = this._fishLayoutAngle + angleStep * index;
+            this.moveFishTo(fish, new Vec3(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0), animate);
         });
         return Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + this._bubbleEdgePadding);
     }
@@ -167,13 +207,113 @@ export class Bubble extends Component {
             // effect.setParent(this.node);
             // effect.setPosition(0, 0, 0);
             this.pop();
+        } else {
+            // This intentionally scales the physics root rather than only `visual`: the circle
+            // collider grows for the first part of the punch and physically separates bubbles
+            // that are touching it, equivalent to Unity's PunchBubble on the group transform.
+            this.punchAfterFishRemoved();
+            // Match Unity: wait briefly for rapid taps to finish, then move the remaining fish
+            // into a compact ring. The bubble's collider stays at its spawn radius, preserving
+            // the physics spacing that BubbleManager used when it packed the level.
+            this.scheduleArrangeFishes();
         }
+    }
+
+    private punchAfterFishRemoved(): void {
+        this._removePunchTween?.stop();
+        this.node.setScale(this._baseRootScale);
+        // A previous punch may have left an enlarged Box2D fixture. Reset it before starting
+        // the next one, matching Unity's Complete() before it creates a fresh punch tween.
+        this._collider?.apply();
+        this._rigidBody?.wakeUp();
+
+        const scaleMultiplier = 1 + Math.max(0, this.removePunchScale);
+        const peakScale = new Vec3(
+            this._baseRootScale.x * scaleMultiplier,
+            this._baseRootScale.y * scaleMultiplier,
+            this._baseRootScale.z,
+        );
+        const duration = Math.max(0.01, this.removePunchDuration);
+        const expandDuration = Math.min(0.1, duration * 0.25);
+        const settleDuration = Math.max(0.01, duration - expandDuration);
+
+        this._removePunchTween = tween(this.node)
+            .to(expandDuration, { scale: peakScale }, { easing: 'quadOut' })
+            // Box2D builds its fixture from the node scale, so apply exactly at the expansion
+            // peak. Waking it ensures even a resting cluster resolves the new overlap now.
+            .call(() => {
+                this._collider?.apply();
+                this._rigidBody?.wakeUp();
+            })
+            .to(settleDuration, { scale: this._baseRootScale }, { easing: 'elasticOut' })
+            .call(() => {
+                this.node.setScale(this._baseRootScale);
+                this._collider?.apply();
+                this._rigidBody?.wakeUp();
+                this._removePunchTween = null;
+            })
+            .start();
+    }
+
+    private scheduleArrangeFishes(): void {
+        this._arrangeDelayTween?.stop();
+        this._arrangeDelayTween = tween(this.node)
+            .delay(this.arrangeDelay)
+            .call(() => {
+                this._arrangeDelayTween = null;
+                this.arrangeRemainingFishes();
+            })
+            .start();
+    }
+
+    private arrangeRemainingFishes(): void {
+        if (this.fishes.length === 0) {
+            return;
+        }
+
+        for (const arrangeTween of this._arrangeFishTweens) {
+            arrangeTween.stop();
+        }
+        this._arrangeFishTweens = [];
+
+        const fishRadii = this.fishes.map(remainingFish => {
+            const size = remainingFish.getSize();
+            return Math.max(size.width, size.height) * 0.5;
+        });
+        this.positionFishesInCircle(fishRadii, Math.max(...fishRadii), true);
+    }
+
+    private moveFishTo(fish: Fish, position: Vec3, animate: boolean): void {
+        if (!animate) {
+            fish.node.setPosition(position);
+            return;
+        }
+
+        const arrangeTween = tween(fish.node)
+            .to(this.arrangeDuration, { position }, { easing: 'backOut' })
+            .call(() => {
+                const index = this._arrangeFishTweens.indexOf(arrangeTween);
+                if (index !== -1) {
+                    this._arrangeFishTweens.splice(index, 1);
+                }
+            })
+            .start();
+        this._arrangeFishTweens.push(arrangeTween);
     }
 
     // Satisfying "burst" once the last fish leaves: a quick anticipation squeeze, then a fast
     // scale-up while fading out, like a real bubble popping. Physics is switched off right away
     // so the popping bubble stops pushing/getting pushed by its neighbors.
     private pop() {
+        this._removePunchTween?.stop();
+        this._removePunchTween = null;
+        this.node.setScale(this._baseRootScale);
+        this._arrangeDelayTween?.stop();
+        this._arrangeDelayTween = null;
+        for (const arrangeTween of this._arrangeFishTweens) {
+            arrangeTween.stop();
+        }
+        this._arrangeFishTweens = [];
         this._bounceTween?.stop();
         this.stopIdleBounce();
         this._wobbleTween?.stop();
@@ -195,8 +335,14 @@ export class Bubble extends Component {
             .to(0.05, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadOut' })
             .to(0.18, { scale: new Vec3(1.5, 1.5, 1) }, { easing: 'quadOut' })
             .call(() => {
+                // Deactivated before destroy() (not relied on to happen synchronously) and
+                // before the event fires, so BubbleManager.getActiveBubbleCount - which checks
+                // node.active while iterating its still-live children - already reads this
+                // bubble as gone the instant a listener handles BUBBLE_REMOVED.
+                this.node.active = false
                 // effect.destroy()
                 this.node.destroy()
+                EventBus.emit(GameEvents.BUBBLE_REMOVED)
             })
             .start();
 
@@ -224,6 +370,7 @@ export class Bubble extends Component {
             fish.initialize(fishId);
         }
         this.calculateRadius();
+        this.fishes.forEach(fish => fish.setInBubbleScale(this.fishScale));
         this.startIdleBounce();
     }
 
@@ -237,22 +384,36 @@ export class Bubble extends Component {
         if (speedSqr < this.bounceSpeedThreshold * this.bounceSpeedThreshold) {
             return;
         }
-        this.bounce();
+
+        const speed = Math.sqrt(speedSqr);
+        const speedRange = Math.max(1, this.bounceMaxSpeed - this.bounceSpeedThreshold);
+        const intensity = Math.min(1, (speed - this.bounceSpeedThreshold) / speedRange);
+        this.bounce(intensity);
     }
 
-    // Juicy jelly "boing" on impact: a couple of damped squash/stretch oscillations plus a
-    // matching rotation wobble. Both only ever touch `visual`; the root node continues to own
-    // physics/collider state, while fish stay in their separate bubbleContainer.
-    bounce() {
+    // Juicy jelly "boing" on impact: the same four-stage decaying squash/stretch oscillation plus
+    // matching rotation wobble as always (quick overshoot, smaller correction back, smaller
+    // correction forward, elastic settle - all in 0.42s total), just scaled by `intensity` (0..1,
+    // how hard the hit was) instead of a single fixed amount. Both only ever touch `visual`; the
+    // root node continues to own physics/collider state, while fish stay in their own bubbleContainer.
+    // (A direction-aware version that rotated visual to the impact axis and leaned on a longer
+    // elastic tween was tried and reverted - it read as sluggish and the per-hit rotation snap
+    // looked janky against bubbles that touch almost constantly. Scale alone already reads as a
+    // harder vs. softer hit; keep it that simple.)
+    bounce(intensity: number = 1) {
         this.stopIdleBounce();
         this._bounceTween?.stop();
         this._wobbleTween?.stop();
 
+        // k scales every stage by the same proportion, so the whole decay shape - not just the
+        // first beat - gets stronger or weaker together. k=1 reproduces the original fixed values
+        // (1.1/0.92 peak) exactly; bounceSquashMin/Max tune the range intensity maps onto.
+        const k = (this.bounceSquashMin + (this.bounceSquashMax - this.bounceSquashMin) * intensity) / 0.1;
         const size = this.radius * 2;
         this._bounceTween = tween(this._visualTransform)
-            .to(0.06, { contentSize: new Size(size * 1.1, size * 0.92) }, { easing: 'quadOut' })
-            .to(0.09, { contentSize: new Size(size * 0.96, size * 1.05) }, { easing: 'sineInOut' })
-            .to(0.11, { contentSize: new Size(size * 1.02, size * 0.98) }, { easing: 'sineInOut' })
+            .to(0.06, { contentSize: new Size(size * (1 + 0.10 * k), size * (1 - 0.08 * k)) }, { easing: 'quadOut' })
+            .to(0.09, { contentSize: new Size(size * (1 - 0.04 * k), size * (1 + 0.05 * k)) }, { easing: 'sineInOut' })
+            .to(0.11, { contentSize: new Size(size * (1 + 0.02 * k), size * (1 - 0.02 * k)) }, { easing: 'sineInOut' })
             .to(0.16, { contentSize: new Size(size, size) }, { easing: 'elasticOut' })
             .call(() => {
                 this._bounceTween = null;
@@ -260,7 +421,8 @@ export class Bubble extends Component {
             })
             .start();
 
-        const kick = (Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 8);
+        const kick = (this.bounceKickMin + (this.bounceKickMax - this.bounceKickMin) * intensity)
+            * (Math.random() < 0.5 ? 1 : -1);
         this._wobbleTween = tween(this.visual)
             .to(0.06, { angle: kick }, { easing: 'quadOut' })
             .to(0.09, { angle: -kick * 0.5 }, { easing: 'sineInOut' })
@@ -317,4 +479,20 @@ export class Bubble extends Component {
     }
 
 
+
+    // Adds (enable) or removes the TUTORIAL bit across this bubble's whole subtree - its own
+    // glass sprite, the bubbleContainer, and every fish and their own visuals - so the spotlight
+    // camera (CameraTutorial) sees the whole bubble as highlighted, not just the fish floating
+    // loose. layerBit must be the TUTORIAL layer's actual bit value (see TutorialController,
+    // which reads it off tutOverlay.layer rather than guessing a hardcoded number).
+    setHighlight(enable: boolean, layerBit: number) {
+        this.applyLayerBit(this.node, layerBit, enable);
+    }
+
+    private applyLayerBit(node: Node, layerBit: number, enable: boolean) {
+        node.layer = enable ? (node.layer | layerBit) : (node.layer & ~layerBit);
+        for (const child of node.children) {
+            this.applyLayerBit(child, layerBit, enable);
+        }
+    }
 }
