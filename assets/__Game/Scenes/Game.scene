@@ -5330,7 +5330,8 @@
     "bubbleManager": {
       "__id__": 152
     },
-    "_id": "e3HPdbLNFFvYdwfTatTE2P"
+    "_id": "e3HPdbLNFFvYdwfTatTE2P",
+    "diffCurveType": 2
   },
   {
     "__type__": "cc.Node",
