@@ -4397,7 +4397,7 @@
       }
     ],
     "levelIndex": 2,
-    "diffCurveType": 1,
+    "diffCurveType": 2,
     "currentLevel": null,
     "orderManager": {
       "__id__": 54

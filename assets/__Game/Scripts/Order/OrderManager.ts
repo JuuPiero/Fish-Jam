@@ -274,9 +274,6 @@ export class OrderManager extends Component {
     // once (the first order claims X; the second slot's pick still sees that same bubble sitting
     // there, since nothing is actually removed from it until the player pops it). Only once no
     // other id can satisfy those two rules at all does a duplicate/overused id get allowed back in.
-    // Ties break deterministically (first survivor, in _pendingCounts's insertion order - itself
-    // fixed by the level's own fish/bubble order) so replaying the same level under the same
-    // diffCurveType always spawns the same sequence of orders instead of a different one each time.
     private pickNextOrderId(excluding: Order | null = null): number | null {
         if (this._pendingCounts.size === 0) {
             return null;
@@ -299,12 +296,32 @@ export class OrderManager extends Component {
         const idPool = this.filterByPriority(ids, dedupeRules);
 
         const candidates = this.filterByReachability(idPool, excluding);
-        return candidates[0] ?? null;
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        // Easy stays deterministic - always the single best option (see filterByReachability) - so
+        // a level's easiest path is reliably repeatable. Normal/Hard instead roll randomly among
+        // whichever candidates tied for best under their own tier's bar: always taking the same
+        // "first declared in the level" id on every tie made replays feel oddly rigid, as if some
+        // fish types were being favored or ignored outright rather than the tier's difficulty rule
+        // actually doing the work - rolling among the tie lets the same level play out differently
+        // from one attempt to the next.
+        if (this._diffCurveType === DiffCurveType.Easy) {
+            return candidates[0];
+        }
+        return candidates[Math.floor(Math.random() * candidates.length)];
     }
 
     // The actual difficulty knob: how much a candidate id is required to already be reachable -
     // on screen right now, either still inside a bubble or already waiting on the bench - before
-    // it's allowed to become the next order.
+    // it's allowed to become the next order. Every tier is built on the same safety net: if
+    // nothing in `ids` is currently reachable at all, fall back to `ids` itself unfiltered rather
+    // than returning empty. Without that, a tier that insists on reachability could make
+    // pickNextOrderId return null and destroy/stall an order slot outright whenever the board
+    // temporarily has nothing visible for any remaining type - not just unhelpful, but a real way
+    // to lose progress through no fault of the player's. Reachability can be preferred, never
+    // required to the point of refusing to spawn anything.
     // - Easy: strongest preference goes to an id some single on-screen bubble can finish by itself
     //   outright (one pop = a complete order); otherwise, picks whichever reachable id simply has
     //   the MOST fish visible right now, summed across bubbles/bench. Ranking by raw abundance
@@ -314,29 +331,41 @@ export class OrderManager extends Component {
     //   fish on screen while another type sits there with 5+ - leaving the order stuck waiting on
     //   its last couple fish to ever surface. Picking the max-abundance id instead keeps giving the
     //   player the genuinely easiest option on screen every time, not just a bare-minimum one.
-    // - Normal: only requires at least one reachable fish - avoids asking for something nobody can
-    //   see at all, without otherwise biasing toward abundance the way Easy does.
-    // - Hard: ignores reachability completely, picking from every fish id the level still owes an
-    //   order - the player may have to wait for a relevant fish to surface.
+    // - Normal: requires enough reachable fish to fill the WHOLE order (scattered across
+    //   bubbles/bench is fine) as a real bar to clear - but, unlike Easy, doesn't then rank
+    //   qualifiers by abundance, just takes the first one that clears the bar. That makes it
+    //   harder than a straight "always grab the single most abundant id": a candidate with 3
+    //   reachable can lose out to an earlier-declared one that also has 3, even if a third id has
+    //   8. Only falls back to ranking by raw abundance when nothing fully clears the bar.
+    // - Hard: a light nudge toward abundance - just avoids settling for an id that's barely hanging
+    //   on with exactly 1 reachable fish when another candidate has a more comfortable cushion (2,
+    //   or however many the order even needs if it needs fewer), without chasing the outright
+    //   maximum the way Normal/Easy do.
     private filterByReachability(ids: number[], excluding: Order | null): number[] {
-        if (this._diffCurveType === DiffCurveType.Hard) {
+        const reachableCounts = this.collectReachableCounts(excluding);
+        const reachable = ids.filter(id => (reachableCounts.get(id) ?? 0) > 0);
+        if (reachable.length === 0) {
             return ids;
         }
 
-        const reachableCounts = this.collectReachableCounts(excluding);
-        const reachable = ids.filter(id => (reachableCounts.get(id) ?? 0) > 0);
-        if (this._diffCurveType === DiffCurveType.Normal) {
-            return reachable;
-        }
-
         const requiredFor = (id: number) => Math.min(OrderManager.FISH_PER_ORDER, this._pendingCounts.get(id) ?? 0);
-        const instantWin = reachable.filter(id => (this._bubbleManager?.getMaxFishInSingleBubble(id) ?? 0) >= requiredFor(id));
-        if (instantWin.length > 0) {
-            return instantWin;
+        const maxReachableAmong = (pool: number[]) => {
+            const max = Math.max(0, ...pool.map(id => reachableCounts.get(id) ?? 0));
+            return pool.filter(id => (reachableCounts.get(id) ?? 0) === max);
+        };
+
+        if (this._diffCurveType === DiffCurveType.Hard) {
+            const comfortable = reachable.filter(id => (reachableCounts.get(id) ?? 0) >= Math.min(2, requiredFor(id)));
+            return comfortable.length > 0 ? comfortable : reachable;
         }
 
-        const maxReachable = Math.max(0, ...reachable.map(id => reachableCounts.get(id) ?? 0));
-        return reachable.filter(id => (reachableCounts.get(id) ?? 0) === maxReachable);
+        if (this._diffCurveType === DiffCurveType.Normal) {
+            const fullyReachable = reachable.filter(id => (reachableCounts.get(id) ?? 0) >= requiredFor(id));
+            return fullyReachable.length > 0 ? fullyReachable : maxReachableAmong(reachable);
+        }
+
+        const instantWin = reachable.filter(id => (this._bubbleManager?.getMaxFishInSingleBubble(id) ?? 0) >= requiredFor(id));
+        return instantWin.length > 0 ? instantWin : maxReachableAmong(reachable);
     }
 
     private createOrder(orderPrefab: Prefab): boolean {
