@@ -9,4 +9,8 @@ export const GameEvents = {
     // clicked) to it. Fired regardless of which path gave it that id (OrderManager.completeOrder
     // resetting it directly, or fillPendingOrders() reactivating a previously-hidden one).
     ORDER_READY: "ORDER_READY",
+    // A bubble just left the board for good (popped empty). BubbleManager listens for this to
+    // release the next bubble from its spawn queue - Unity's "spawn below the screen once there
+    // is room" rule.
+    BUBBLE_REMOVED: "BUBBLE_REMOVED",
 }

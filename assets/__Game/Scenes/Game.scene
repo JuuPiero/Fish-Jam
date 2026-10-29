@@ -1825,8 +1825,8 @@
     },
     "_lscale": {
       "__type__": "cc.Vec3",
-      "x": 1,
-      "y": 1,
+      "x": 0.8,
+      "y": 0.8,
       "z": 1
     },
     "_mobility": 0,
@@ -2863,7 +2863,12 @@
       "__id__": 26
     },
     "bubbleGap": 20,
-    "_id": "40aPZ/JzxBnL7ixRqwBoDP"
+    "_id": "40aPZ/JzxBnL7ixRqwBoDP",
+    "topBorder": {
+      "__id__": 18
+    },
+    "spawnColumns": 48,
+    "maxBubblesOnScreen": 18
   },
   {
     "__type__": "cc.Node",
