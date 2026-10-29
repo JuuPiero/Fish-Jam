@@ -50,6 +50,16 @@ export class SlotManager extends Component {
         return this._pendingParkArrivals.size > 0;
     }
 
+    // Unity's WaitSlotsManager.CollectWaitingItemCounts equivalent. Occupants are registered
+    // before their fly-to-slot animation begins, so an in-flight fish counts as reachable too.
+    collectWaitingFishCounts(counts: Map<number, number>): void {
+        for (const fish of this._occupants) {
+            if (fish) {
+                counts.set(fish.id, (counts.get(fish.id) ?? 0) + 1);
+            }
+        }
+    }
+
     // Parks a fish in the first free slot. Returns false if the bench is full.
     park(fish: Fish, flyLayer: Node, onArrive?: () => void): boolean {
         const index = this._occupants.indexOf(null);

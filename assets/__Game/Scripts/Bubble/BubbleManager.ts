@@ -174,6 +174,27 @@ export class BubbleManager extends Component {
         }
     }
 
+    // Largest number of `fishId` fish found together in any single active bubble right now - one
+    // bubble holding enough on its own is a stronger "ready to go" signal than merely reachable
+    // (the same total scattered across several bubbles/bench slots still needs several pops).
+    getMaxFishInSingleBubble(fishId: number): number {
+        let max = 0;
+        for (const child of this.node.children) {
+            if (!child.active) {
+                continue;
+            }
+            const bubble = child.getComponent(Bubble);
+            if (!bubble) {
+                continue;
+            }
+            const count = bubble.fishes.reduce((total, fish) => total + (fish.id === fishId ? 1 : 0), 0);
+            if (count > max) {
+                max = count;
+            }
+        }
+        return max;
+    }
+
     private clearBubbles(): void {
         this._pendingBubbles = [];
         this._queue = [];

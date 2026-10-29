@@ -1,16 +1,22 @@
-import { _decorator, CCInteger, Component, JsonAsset, Node } from 'cc';
+import { _decorator, CCInteger, Component, Enum, JsonAsset, Node } from 'cc';
 import { LevelData } from './Data/LevelData';
 import { OrderManager } from './Order/OrderManager';
 import { SlotManager } from './Slot/SlotManager';
 import { BubbleManager } from './Bubble/BubbleManager';
 import { EDITOR, PREVIEW } from 'cc/env';
 import { playGroundField } from 'db://cocos-playground/PlayGroundField';
+import { DiffCurveType } from './DiffCurveType';
 const { ccclass, property } = _decorator;
 
 @ccclass('LevelManager')
 export class LevelManager extends Component {
     @playGroundField({type: [JsonAsset]}) levels: JsonAsset[] = [];
     @playGroundField({type: CCInteger}) levelIndex: number = 0;
+
+    @playGroundField({type: Enum(DiffCurveType), group: "PLAYABLLE", label: "ĐỘ KHÓ"}) diffCurveType: DiffCurveType = DiffCurveType.None;
+
+
+
     @property({ readonly: true, type: LevelData }) currentLevel: LevelData = null;
     @property(OrderManager) orderManager: OrderManager = null;
     @property(SlotManager) slotManager: SlotManager = null;
@@ -24,7 +30,7 @@ export class LevelManager extends Component {
         }
         this.bubbleManager?.initialize(this.currentLevel);
         this.slotManager?.initialize();
-        this.orderManager?.initialize(this.currentLevel);
+        this.orderManager?.initialize(this.currentLevel, this.bubbleManager, this.slotManager, this.diffCurveType);
     }
 
     logData() {

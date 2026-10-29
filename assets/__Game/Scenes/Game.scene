@@ -316,7 +316,7 @@
     "_priority": 1,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 959.9999999999999,
+    "_orthoHeight": 960,
     "_near": 1,
     "_far": 2000,
     "_color": {
@@ -1769,6 +1769,7 @@
     "spacing": 220,
     "count": 4,
     "relayoutDuration": 0.25,
+    "maxSameOrderInARow": 2,
     "orders": [],
     "_id": "132CoMdDNPAqMOlPtJMQAJ"
   },
@@ -2862,13 +2863,13 @@
     "rightBorder": {
       "__id__": 26
     },
-    "bubbleGap": 20,
-    "_id": "40aPZ/JzxBnL7ixRqwBoDP",
     "topBorder": {
       "__id__": 18
     },
+    "bubbleGap": 20,
     "spawnColumns": 48,
-    "maxBubblesOnScreen": 18
+    "maxBubblesOnScreen": 18,
+    "_id": "40aPZ/JzxBnL7ixRqwBoDP"
   },
   {
     "__type__": "cc.Node",
@@ -4389,9 +4390,14 @@
       {
         "__uuid__": "16b5b7df-4d71-4bb2-901b-0f6b02f08ee5",
         "__expectedType__": "cc.JsonAsset"
+      },
+      {
+        "__uuid__": "03cf02dc-77fe-466e-8aa6-f17e3c23ec3d",
+        "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 0,
+    "levelIndex": 2,
+    "diffCurveType": 1,
     "currentLevel": null,
     "orderManager": {
       "__id__": 54

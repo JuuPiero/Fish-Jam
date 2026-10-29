@@ -1,4 +1,4 @@
-import { _decorator, Component, instantiate, Node, tween, Tween, Vec3 } from 'cc';
+import { _decorator, Component, instantiate, Node, Prefab, tween, Tween, Vec3 } from 'cc';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Order } from './Order';
@@ -6,6 +6,9 @@ import { LevelData } from '../Data/LevelData';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
 import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
+import { BubbleManager } from '../Bubble/BubbleManager';
+import { SlotManager } from '../Slot/SlotManager';
+import { DiffCurveType } from '../DiffCurveType';
 const { ccclass, property } = _decorator;
 
 @ccclass('OrderManager')
@@ -17,11 +20,16 @@ export class OrderManager extends Component {
     @property({tooltip: 'Seconds for the row to slide into its re-centered layout when the visible count changes'})
     relayoutDuration: number = 0.25;
 
+    @property({ tooltip: 'Only applies when LevelManager.diffCurveType is not None - caps how many times in a row the same fish id can be (re)assigned to a freed order slot.' })
+    maxSameOrderInARow: number = 2;
+
     @property({type: [Order], readonly: true}) orders: Order[] = []
 
     // Match-3: an order is fulfilled by delivering this many fish of the same id (matches the
     // number of placeholder slots on the Order prefab).
     private static readonly FISH_PER_ORDER = 3;
+
+    // --- DiffCurveType.None path below: today's original behavior, kept byte-for-byte. ---
 
     // Order ids still waiting for a visible slot to free up.
     private _queue: number[] = [];
@@ -32,21 +40,61 @@ export class OrderManager extends Component {
     // pending order gets reactivated and reset() once one of those duplicate ids frees up.
     private _pendingOrders: Order[] = [];
 
+    // --- DiffCurveType.Easy/Normal/Hard path below: reachability-aware picker. ---
+
+    // Fish not yet assigned to an order. Unity calls this pendingCounts and decrements it only
+    // when an order is actually created, not when the player taps one of its fish.
+    private _pendingCounts = new Map<number, number>();
+    private _lastCreatedId = -1;
+    private _sameOrderRun = 0;
+    private _bubbleManager: BubbleManager | null = null;
+    private _slotManager: SlotManager | null = null;
+    private _diffCurveType: DiffCurveType = DiffCurveType.None;
+
     // Tracks each order's own in-flight relayout slide, if any, so a new one can stop just that
     // tween - Order's own node also carries its pop-in scale/shake tweens, and Tween.stopAllByTarget
     // would wrongly cancel those too if a relayout happens to land while one is still playing.
     private _relayoutTweens = new Map<Order, Tween<Node>>();
 
-    initialize(levelData: LevelData) {
+    initialize(levelData: LevelData, bubbleManager?: BubbleManager, slotManager?: SlotManager, diffCurveType: DiffCurveType = DiffCurveType.None) {
         for (const child of this.orderContainer.children.slice()) {
             child.removeFromParent();
             child.destroy();
         }
         this.orders = [];
         this._pendingOrders = [];
+        this._relayoutTweens.clear();
+        this._bubbleManager = bubbleManager ?? null;
+        this._slotManager = slotManager ?? null;
+        this._diffCurveType = diffCurveType;
 
         const orderPrefab = ServiceLocator.get(GameConfigSA).orderPrefab;
 
+        if (this._diffCurveType === DiffCurveType.None) {
+            this.initializeClassic(levelData, orderPrefab);
+            return;
+        }
+
+        this._pendingCounts.clear();
+        this._lastCreatedId = -1;
+        this._sameOrderRun = 0;
+        for (const bubble of levelData.bubbles) {
+            for (const fishId of bubble.fishes) {
+                this._pendingCounts.set(fishId, (this._pendingCounts.get(fishId) ?? 0) + 1);
+            }
+        }
+
+        for (let slotIndex = 0; slotIndex < this.count; slotIndex++) {
+            if (!this.createOrder(orderPrefab)) {
+                break;
+            }
+        }
+        this.relayoutOrders(false);
+    }
+
+    // Original round-robin queue setup - only reached when diffCurveType is None, kept exactly as
+    // it was before the difficulty curve existed.
+    private initializeClassic(levelData: LevelData, orderPrefab: Prefab) {
         const fishIds: number[] = [];
         for (const bubble of levelData.bubbles) {
             fishIds.push(...bubble.fishes);
@@ -120,11 +168,8 @@ export class OrderManager extends Component {
         return this.orders.find(order => order.id === fishId && !order.isFullyClaimed) ?? null;
     }
 
-    // Call once `order` has been fully delivered. Reuses its slot for the next queued fish id
-    // that isn't already showing on another visible order, or destroys the order (returning
-    // null) if the level has none left to give it at all. Returns null too if every remaining
-    // queued id is currently a duplicate - `order` is kept alive but hidden in that case (see
-    // fillPendingOrders()) rather than shown with a repeated id.
+    // Call once `order` has been fully delivered. Reuses its slot for the next fish id the level
+    // still owes an order, or destroys the order (returning null) if there's none left to give it.
     completeOrder(order: Order): number | null {
         const index = this.orders.indexOf(order);
         if (index === -1) {
@@ -135,6 +180,29 @@ export class OrderManager extends Component {
         // the queue: the final visible orders have no replacement, but are still valid matches.
         EventBus.emit(GameEvents.MATCHED);
 
+        if (this._diffCurveType === DiffCurveType.None) {
+            return this.completeOrderClassic(order, index);
+        }
+
+        // Unity removes the completed order from its active slot before choosing the replacement,
+        // so its old id must not count as an already-open order for this pick.
+        const nextId = this.pickNextOrderId(order);
+        if (nextId !== null) {
+            const requiredCount = this.reserveOrderFish(nextId);
+            order.reset(nextId, requiredCount);
+            this.recordCreatedOrder(nextId);
+            return nextId;
+        }
+
+        this.orders.splice(index, 1);
+        this._relayoutTweens.delete(order);
+        order.node.destroy();
+        this.relayoutOrders(true);
+        return null;
+    }
+
+    // Original duplicate-hiding completion flow - only reached when diffCurveType is None.
+    private completeOrderClassic(order: Order, index: number): number | null {
         const nextId = this.takeNextAvailableId(order);
         if (nextId !== null) {
             order.reset(nextId);
@@ -197,6 +265,147 @@ export class OrderManager extends Component {
         if (filledAny) {
             this.relayoutOrders(true);
         }
+    }
+
+    // Port of Unity's OrdersManager.PickNextOrderItemId, with the reachability requirement eased
+    // or dropped entirely depending on diffCurveType (see filterByReachability). Duplicate-avoidance
+    // and the same-id-run limit are resolved FIRST, before reachability even gets a say - otherwise
+    // a bubble that happens to be "ready to go" for id X could get X offered to two order slots at
+    // once (the first order claims X; the second slot's pick still sees that same bubble sitting
+    // there, since nothing is actually removed from it until the player pops it). Only once no
+    // other id can satisfy those two rules at all does a duplicate/overused id get allowed back in.
+    // Ties break deterministically (first survivor, in _pendingCounts's insertion order - itself
+    // fixed by the level's own fish/bubble order) so replaying the same level under the same
+    // diffCurveType always spawns the same sequence of orders instead of a different one each time.
+    private pickNextOrderId(excluding: Order | null = null): number | null {
+        if (this._pendingCounts.size === 0) {
+            return null;
+        }
+
+        const ids = Array.from(this._pendingCounts.keys());
+        const notAlreadyOpen = (id: number) => !this.orders.some(order => order !== excluding && order.id === id);
+
+        // Easy's whole point is always handing over the single easiest pick available. Enforcing
+        // the run-limit there would fight that goal directly: once an abundant, bubble-complete id
+        // wins the reachability check twice in a row, the run-limit would forcibly evict it in
+        // favor of some type that hasn't surfaced yet and is often much LESS reachable - which is
+        // exactly backwards for Easy. Only Normal/Hard keep it, where some forced variety is an
+        // intentional part of the added challenge.
+        const withinRunLimit = (id: number) =>
+            id !== this._lastCreatedId || this._sameOrderRun < this.maxSameOrderInARow;
+        const dedupeRules = this._diffCurveType === DiffCurveType.Easy
+            ? [notAlreadyOpen]
+            : [withinRunLimit, notAlreadyOpen];
+        const idPool = this.filterByPriority(ids, dedupeRules);
+
+        const candidates = this.filterByReachability(idPool, excluding);
+        return candidates[0] ?? null;
+    }
+
+    // The actual difficulty knob: how much a candidate id is required to already be reachable -
+    // on screen right now, either still inside a bubble or already waiting on the bench - before
+    // it's allowed to become the next order.
+    // - Easy: strongest preference goes to an id some single on-screen bubble can finish by itself
+    //   outright (one pop = a complete order); otherwise, picks whichever reachable id simply has
+    //   the MOST fish visible right now, summed across bubbles/bench. Ranking by raw abundance
+    //   (instead of a flat "enough for a full order, else just 1 is fine" cutoff) matters a lot in
+    //   practice: once nothing fully qualifies, a flat cutoff falls back to the first id with even
+    //   a single reachable fish, which can and does commit a fresh order to something with only 1
+    //   fish on screen while another type sits there with 5+ - leaving the order stuck waiting on
+    //   its last couple fish to ever surface. Picking the max-abundance id instead keeps giving the
+    //   player the genuinely easiest option on screen every time, not just a bare-minimum one.
+    // - Normal: only requires at least one reachable fish - avoids asking for something nobody can
+    //   see at all, without otherwise biasing toward abundance the way Easy does.
+    // - Hard: ignores reachability completely, picking from every fish id the level still owes an
+    //   order - the player may have to wait for a relevant fish to surface.
+    private filterByReachability(ids: number[], excluding: Order | null): number[] {
+        if (this._diffCurveType === DiffCurveType.Hard) {
+            return ids;
+        }
+
+        const reachableCounts = this.collectReachableCounts(excluding);
+        const reachable = ids.filter(id => (reachableCounts.get(id) ?? 0) > 0);
+        if (this._diffCurveType === DiffCurveType.Normal) {
+            return reachable;
+        }
+
+        const requiredFor = (id: number) => Math.min(OrderManager.FISH_PER_ORDER, this._pendingCounts.get(id) ?? 0);
+        const instantWin = reachable.filter(id => (this._bubbleManager?.getMaxFishInSingleBubble(id) ?? 0) >= requiredFor(id));
+        if (instantWin.length > 0) {
+            return instantWin;
+        }
+
+        const maxReachable = Math.max(0, ...reachable.map(id => reachableCounts.get(id) ?? 0));
+        return reachable.filter(id => (reachableCounts.get(id) ?? 0) === maxReachable);
+    }
+
+    private createOrder(orderPrefab: Prefab): boolean {
+        const id = this.pickNextOrderId();
+        if (id === null) {
+            return false;
+        }
+
+        const requiredCount = this.reserveOrderFish(id);
+        const orderNode = instantiate(orderPrefab);
+        orderNode.setParent(this.orderContainer);
+
+        const order = orderNode.getComponent(Order);
+        if (!order) {
+            console.error('[OrderManager] Order prefab is missing its Order component.');
+            orderNode.destroy();
+            return false;
+        }
+
+        order.initialize(id, requiredCount);
+        this.orders.push(order);
+        this.recordCreatedOrder(id);
+        return true;
+    }
+
+    private reserveOrderFish(id: number): number {
+        const available = this._pendingCounts.get(id) ?? 0;
+        const requiredCount = Math.min(OrderManager.FISH_PER_ORDER, available);
+        const remaining = available - requiredCount;
+        if (remaining > 0) {
+            this._pendingCounts.set(id, remaining);
+        } else {
+            this._pendingCounts.delete(id);
+        }
+        return requiredCount;
+    }
+
+    private collectReachableCounts(excluding: Order | null = null): Map<number, number> {
+        const counts = new Map<number, number>();
+        this._bubbleManager?.collectReachableFishCounts(counts);
+        this._slotManager?.collectWaitingFishCounts(counts);
+
+        // Fish claimed by an order are still visually in flight or already in its bowl; remove
+        // them from the available source exactly as Unity subtracts RequiredCount - CurrentCount.
+        for (const order of this.orders) {
+            if (order === excluding) {
+                continue;
+            }
+            const available = (counts.get(order.id) ?? 0) - order.remainingCount;
+            counts.set(order.id, available);
+        }
+        return counts;
+    }
+
+    private filterByPriority(candidates: number[], predicatesWeakToStrong: Array<(id: number) => boolean>): number[] {
+        for (let dropped = 0; dropped < predicatesWeakToStrong.length; dropped++) {
+            const survivors = candidates.filter(id =>
+                predicatesWeakToStrong.slice(dropped).every(predicate => predicate(id)),
+            );
+            if (survivors.length > 0) {
+                return survivors;
+            }
+        }
+        return candidates;
+    }
+
+    private recordCreatedOrder(id: number): void {
+        this._sameOrderRun = id === this._lastCreatedId ? this._sameOrderRun + 1 : 1;
+        this._lastCreatedId = id;
     }
 
     // Slides every currently visible order into a horizontally centered row, sized for however
