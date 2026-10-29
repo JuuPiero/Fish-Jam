@@ -419,7 +419,7 @@
     },
     "_depth": 1,
     "_stencil": 0,
-    "_clearFlags": 7,
+    "_clearFlags": 0,
     "_rect": {
       "__type__": "cc.Rect",
       "x": 0,
@@ -2887,7 +2887,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": -946.293,
+      "y": 33.301,
       "z": 0
     },
     "_lrot": {

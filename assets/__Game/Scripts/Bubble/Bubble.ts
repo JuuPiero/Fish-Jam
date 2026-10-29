@@ -342,7 +342,7 @@ export class Bubble extends Component {
                 this.node.active = false
                 // effect.destroy()
                 this.node.destroy()
-                EventBus.emit(GameEvents.BUBBLE_REMOVED)
+                // EventBus.emit(GameEvents.BUBBLE_REMOVED)
             })
             .start();
 

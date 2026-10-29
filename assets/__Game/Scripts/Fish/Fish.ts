@@ -60,7 +60,7 @@ export class Fish extends Component {
     private _pathLength = 0;
     private _landingRotationTween: Tween<Node> | null = null;
     private _landingScaleTween: Tween<Node> | null = null;
-
+ private _inBubbleScale = 1;
     protected onLoad(): void {
         this._button = this.getComponent(Button)
         this.fishAnim = this.visual.getComponent(sp.Skeleton);
@@ -76,6 +76,11 @@ export class Fish extends Component {
         this._button.node.off(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
         this._button.node.off(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
     }
+     setInBubbleScale(value: number) {
+        this._inBubbleScale = Math.max(0.01, value);
+        this.node.setScale(this._inBubbleScale, this._inBubbleScale, 1);
+    }
+
     initialize(id: number) {
         this.id = id;
         // const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
