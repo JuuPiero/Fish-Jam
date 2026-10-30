@@ -1,4 +1,4 @@
-import { _decorator, Component, Label, Node, sp, tween, Tween, Vec3 } from 'cc';
+import { _decorator, Component, Label, Node, sp, Sprite, tween, Tween, Vec3 } from 'cc';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { FishConfigSA } from '../Data/FishConfigSA';
 import { Fish } from '../Fish/Fish';
@@ -14,6 +14,7 @@ export class Order extends Component {
     @property(Node) slotsPos: Node[] = []
     @property(Node) lidPos: Node = null;
     @property(Node) targetVisual: Node = null;
+    @property(Sprite) targetSprite: Sprite = null;
 
     @property(Label) countlabel: Label = null;
 
@@ -96,7 +97,8 @@ export class Order extends Component {
         // Slots now use the delivered Fish node itself as their visual. Remove the previous
         // delivered fish only while this order is hidden during its reset pop.
         this.clearDeliveredFishes();
-        this.targetVisual.getComponentInChildren(sp.Skeleton).setSkin(ServiceLocator.get(FishConfigSA).getAnimationName(this.id));
+        this.targetSprite.spriteFrame = ServiceLocator.get(FishConfigSA).getFoodById(this.id);
+        // this.targetVisual.getComponentInChildren(sp.Skeleton).setSkin(ServiceLocator.get(FishConfigSA).getAnimationName(this.id));
     }
 
     private clearDeliveredFishes() {

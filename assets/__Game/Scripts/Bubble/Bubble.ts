@@ -368,6 +368,7 @@ export class Bubble extends Component {
             const fish = fishNode.getComponent(Fish)
             this.fishes.push(fish);
             fish.initialize(fishId);
+            fishNode.angle = this.randomRange(-15, 15);
         }
         this.calculateRadius();
         this.fishes.forEach(fish => fish.setInBubbleScale(this.fishScale));

@@ -17,6 +17,8 @@ export class Fish extends Component {
     @property(Node) visual: Node = null;
     @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
 
+    @property(Sprite) foodVisual: Sprite = null;
+
     onclick: () => void = null;
 
     // Keep the Cocos path behavior aligned with GameItemController in the Unity project: path
@@ -67,14 +69,13 @@ export class Fish extends Component {
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
-        this._button.node.on(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
-        // Triggered when mouse moves out of the node bounding box
-        this._button.node.on(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
+        // this._button.node.on(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
+        // this._button.node.on(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
     }
     protected onDisable(): void {
         this._button.node.off(Button.EventType.CLICK, this.onFishClick, this)
-        this._button.node.off(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
-        this._button.node.off(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
+        // this._button.node.off(Node.EventType.MOUSE_ENTER, this.onMouseEnter, this);
+        // this._button.node.off(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
     }
      setInBubbleScale(value: number) {
         this._inBubbleScale = Math.max(0.01, value);
@@ -83,21 +84,22 @@ export class Fish extends Component {
 
     initialize(id: number) {
         this.id = id;
+        this.foodVisual.spriteFrame = ServiceLocator.get(FishConfigSA).getFoodById(id);
         // const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
         // this.visual.getComponent(Sprite).spriteFrame = spriteFrame;
-        this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
+        // this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
         // Match the visual to this sprite's real (trimmed) size instead of whatever size the
         // prefab happened to be baked with - fish types vary a lot in size, and that size is
         // what Bubble.calculateRadius() reads via getSize(), so bubbles size themselves
         // differently depending on which fish they actually contain.
-        this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
+        // this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
 
         // Do not rely only on the prefab's defaultAnimation. Unlike Unity's
         // SkeletonAnimation (which reapplies its AnimationState after SetSkin), changing a
         // Cocos skin can leave the skeleton on its current setup pose. Explicitly keep the
         // swimming track looping so the tail/fins continue animating while this node tweens.
-        this.fishAnim.timeScale = 1;
-        this.fishAnim.setAnimation(0, 'animation', true);
+        // this.fishAnim.timeScale = 1;
+        // this.fishAnim.setAnimation(0, 'animation', true);
     }
 
     onFishClick() {

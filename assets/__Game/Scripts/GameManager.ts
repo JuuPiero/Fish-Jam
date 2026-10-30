@@ -199,7 +199,7 @@ export class GameManager extends Component {
         // declare defeat after every currently reserved fish has visibly landed. A matching
         // order may open while they are flying and free a reserved slot in time.
         const parked = slotManager.park(fish, this.flyLayer, () => {
-            if (!slotManager.hasPendingParkArrivals() && !slotManager.hasFreeSlot()) {
+            if (this.isBoardStuck() || (!slotManager.hasPendingParkArrivals() && !slotManager.hasFreeSlot())) {
                 EventBus.emit(GameEvents.LEVEL_LOSE);
             }
         });
@@ -207,6 +207,27 @@ export class GameManager extends Component {
             EventBus.emit(GameEvents.LEVEL_LOSE);
             return;
         }
+    }
+
+    // True once the bench is down to its last free slot (4/5 by default) AND nothing currently
+    // visible on the board - still sitting in an active bubble - could fill any order that's
+    // still open. At that point every remaining tap can only ever park another dead fish, so the
+    // level is already unwinnable even though one slot is technically still free - no need to
+    // make the player waste that last click just to confirm it.
+    private isBoardStuck(): boolean {
+        const { orderManager, slotManager, bubbleManager } = this.levelManager;
+        if (slotManager.getOccupiedCount() < slotManager.count - 1) {
+            return false;
+        }
+
+        const reachableCounts = new Map<number, number>();
+        bubbleManager.collectReachableFishCounts(reachableCounts);
+        for (const fishId of reachableCounts.keys()) {
+            if (orderManager.findMatchingOrder(fishId)) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

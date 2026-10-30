@@ -42,8 +42,12 @@ export class SlotManager extends Component {
         }
     }
 
-    hasFreeSlot(): boolean {        
+    hasFreeSlot(): boolean {
         return this._occupants.some(fish => fish === null);
+    }
+
+    getOccupiedCount(): number {
+        return this._occupants.filter(fish => fish !== null).length;
     }
 
     hasPendingParkArrivals(): boolean {

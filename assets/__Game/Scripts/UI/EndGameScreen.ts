@@ -17,6 +17,9 @@ export class EndGameScreen extends ScreenBase {
 
     @property(Node) sadFace: Node = null;
     @property(Node) happyFace: Node = null;
+
+
+    @property(Node) loseLabel: Node = null;
     // @property(Button)
     // retryBtn: Button = null;
 
@@ -32,8 +35,9 @@ export class EndGameScreen extends ScreenBase {
         }
         else {
             this.sadFace.active = true;
+            this.loseLabel.active = true;
         }
-        PlayableAdsManager.OpenStore();
+        PlayableAdsManager.EndGame();
         // this.downloadBtn.node.active = false;
         // this.retryBtn.node.active = true;
 

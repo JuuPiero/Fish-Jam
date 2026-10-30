@@ -11,6 +11,8 @@ export class FishConfigSA extends bh.ScriptableAsset {
     @property({ type: CCString }) fishes: string[] = [];
 
 
+    @property([SpriteFrame]) foods: SpriteFrame[] = [];
+
     animationById: Map<number, string> = new Map();
 
     onLoaded(): void {
@@ -22,6 +24,10 @@ export class FishConfigSA extends bh.ScriptableAsset {
             this.animationById.set(id, name);
         }
 
+    }
+
+    getFoodById(id: number) {
+        return this.foods[id];
     }
 
     getAnimationName(fishId: number) {
