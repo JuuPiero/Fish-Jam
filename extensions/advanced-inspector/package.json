@@ -1,0 +1,53 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "advanced-inspector",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js"
+    },
+    "description": "i18n:advanced-inspector.description",
+    "main": "./dist/main.js",
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "contributions": {
+        "inspector": {
+            "section": {
+                "node": {
+                    "cc.Class": "./dist/inspector/component.js"
+                }
+            }
+        },
+        "scene": {
+            "script": "./dist/scene.js"
+        },
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": false
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.extension/Advanced Inspector",
+                "label": "i18n:advanced-inspector.show_info",
+                "message": "show-info"
+            }
+        ],
+        "messages": {
+            "show-info": {
+                "methods": ["showInfo"]
+            }
+        }
+    }
+}

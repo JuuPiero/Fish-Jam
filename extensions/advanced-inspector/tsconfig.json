@@ -1,0 +1,19 @@
+{
+    "extends": "./base.tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        "lib": ["ES2019", "DOM", "DOM.Iterable"],
+        "types": [
+            "node",
+            "@cocos/creator-types/editor",
+        ],
+        // Tests run the runtime against small stubs of 'cc'.
+        "paths": {
+            "cc": ["./tests/stubs/cc.ts"],
+            "cc/env": ["./tests/stubs/cc-env.ts"]
+        }
+    },
+    "include": ["source/**/*.ts", "tests/**/*.ts"],
+    "exclude": ["tests/preview"]
+}

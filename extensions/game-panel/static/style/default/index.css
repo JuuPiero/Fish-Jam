@@ -1,0 +1,623 @@
+/* Game panel — styled after Unity's Game view (Pro / dark skin). */
+
+:host {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#app {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+.gp {
+    --win: #383838;
+    --toolbar: #3c3c3c;
+    --line: #232323;
+    --hover: #474747;
+    --on: #565656;
+    --text: #c4c4c4;
+    --text-strong: #e4e4e4;
+    --muted: #8c8c8c;
+    --accent: #3a79bb;
+    --play: #4c8de0;
+    --warn: #e6b23c;
+    --error: #e05252;
+
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    background: var(--win);
+    color: var(--text);
+    font: 12px/1.35 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    outline: none;
+    user-select: none;
+}
+
+.gp *,
+.gp *::before,
+.gp *::after {
+    box-sizing: border-box;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- toolbar */
+
+.tb {
+    display: flex;
+    align-items: stretch;
+    flex: none;
+    height: 22px;
+    background: var(--toolbar);
+    border-bottom: 1px solid var(--line);
+}
+
+/* Unity tints the editor while in play mode. */
+.gp.playmode .tb {
+    background: #3d4450;
+    box-shadow: inset 0 -2px 0 var(--play);
+}
+
+.tb-side {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.tb-side.right {
+    justify-content: flex-end;
+}
+
+.tb-chip,
+.tb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 21px;
+    padding: 0 9px;
+    border: none;
+    border-right: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    white-space: nowrap;
+}
+
+.tb-side.right .tb-btn {
+    border-right: none;
+    border-left: 1px solid var(--line);
+}
+
+.tb-chip em,
+.tb-scale em,
+.tb-btn em {
+    color: var(--muted);
+    font-style: normal;
+}
+
+.tb-drop .caret {
+    width: 0;
+    height: 0;
+    margin-left: 2px;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-top: 4px solid currentColor;
+}
+
+.tb-aspect {
+    max-width: 260px;
+    min-width: 0;
+}
+
+.tb-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tb-warn {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--warn);
+    color: #1d1d1d;
+    font: bold 10px/13px "Segoe UI", sans-serif;
+    text-align: center;
+}
+
+.tb-btn:hover {
+    background: var(--hover);
+}
+
+.tb-btn.on {
+    background: var(--on);
+    color: var(--text-strong);
+}
+
+.tb-icon {
+    padding: 0 5px;
+}
+
+.tb-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.tb-scale {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.tb-scale input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    background: transparent;
+}
+
+.tb-scale input::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 2px;
+    background: #5e5e5e;
+}
+
+.tb-scale input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    margin-top: -3.5px;
+    border-radius: 50%;
+    background: #a8a8a8;
+    border: 1px solid #2a2a2a;
+}
+
+/* Narrow panels: drop labels, then the scale slider, and stop centering the play buttons. */
+.gp.compact .tb-side {
+    overflow: hidden;
+}
+
+.gp.compact .tb-side.right {
+    flex: none;
+}
+
+.gp.compact .tb-scale > span,
+.gp.compact .tb-aspect em {
+    display: none;
+}
+
+.gp.compact .tb-scale input {
+    width: 56px;
+}
+
+.gp.compact .tb-aspect {
+    max-width: 140px;
+}
+
+.gp.tiny .tb-scale {
+    display: none;
+}
+
+.gp.tiny .tb-aspect {
+    max-width: 100px;
+}
+
+/* Play / Pause / Step: Unity's joined button group. */
+.tb-play {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 8px;
+}
+
+.pbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid #262626;
+    background: #4a4a4a;
+    color: #d6d6d6;
+}
+
+.pbtn:first-child {
+    border-radius: 3px 0 0 3px;
+}
+
+.pbtn:last-child {
+    border-radius: 0 3px 3px 0;
+}
+
+.pbtn svg {
+    width: 13px;
+    height: 13px;
+}
+
+.pbtn:hover:not(:disabled) {
+    background: #5a5a5a;
+}
+
+.pbtn.on {
+    background: var(--play);
+    border-color: #2b5a96;
+    color: #ffffff;
+}
+
+.pbtn:disabled {
+    color: #757575;
+    background: #444444;
+}
+
+/* ------------------------------------------------------------------ view */
+
+.view {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+}
+
+.game {
+    flex: none;
+    display: block;
+    background: #000000;
+    image-rendering: auto;
+}
+
+.empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #9a9a9a;
+    font-size: 14px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.empty .muted {
+    font-size: 12px;
+}
+
+.busy {
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    padding: 3px 12px;
+    border-radius: 3px;
+    background: rgba(20, 20, 20, 0.85);
+    color: var(--text-strong);
+}
+
+/* Unity "Statistics" overlay */
+.stats {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    min-width: 190px;
+    padding: 6px 8px 7px;
+    border: 1px solid #191919;
+    border-radius: 3px;
+    background: rgba(56, 56, 56, 0.94);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+
+.stats-title {
+    margin-bottom: 4px;
+    color: var(--text-strong);
+    font-weight: 600;
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    line-height: 17px;
+}
+
+.stats-row b {
+    color: var(--text-strong);
+    font-weight: normal;
+    font-variant-numeric: tabular-nums;
+}
+
+.helpbox {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    max-width: calc(100% - 16px);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: rgba(66, 66, 66, 0.96);
+    color: var(--text-strong);
+    user-select: text;
+}
+
+.hb-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--error);
+    color: #ffffff;
+    font: bold 11px/16px "Segoe UI", sans-serif;
+    text-align: center;
+}
+
+.hb-text {
+    flex: 1;
+    word-break: break-word;
+}
+
+.hb-close {
+    flex: none;
+    padding: 0 4px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 16px;
+}
+
+.hb-close:hover {
+    color: var(--text-strong);
+}
+
+.notice {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    max-width: 80%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    background: rgba(32, 32, 32, 0.94);
+    color: var(--text-strong);
+    text-align: center;
+    word-break: break-all;
+    pointer-events: none;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.25s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* ------------------------------------------------------------------ menu */
+
+.menu {
+    position: absolute;
+    top: 22px;
+    z-index: 10;
+    min-width: 200px;
+    max-height: calc(100% - 30px);
+    overflow-y: auto;
+    padding: 4px 0;
+    border: 1px solid #191919;
+    border-radius: 0 0 3px 3px;
+    background: var(--win);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.aspect-menu {
+    min-width: 270px;
+}
+
+.mi {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 3px 8px;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.mi:hover {
+    background: var(--accent);
+    color: #ffffff;
+}
+
+.mi b {
+    font-weight: 600;
+}
+
+.mi em {
+    margin-left: auto;
+    padding-left: 16px;
+    color: var(--muted);
+    font-style: normal;
+}
+
+.mi:hover em,
+.mi:hover .mi-kind {
+    color: #dfe9f5;
+}
+
+.mi-kind {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.tick {
+    flex: none;
+    width: 12px;
+    height: 12px;
+}
+
+.mi.checked .tick {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M2 6.5l2.8 2.8L10 3.5' fill='none' stroke='%23e0e0e0' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat center;
+}
+
+.mi-remove {
+    flex: none;
+    margin-left: 6px;
+    padding: 0 4px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    line-height: 14px;
+    opacity: 0.6;
+}
+
+.mi-remove:hover {
+    opacity: 1;
+}
+
+/* Unity "Add Game View Size" form */
+.add-form {
+    padding: 6px 10px 8px;
+}
+
+.add-title {
+    margin-bottom: 6px;
+    color: var(--text-strong);
+    font-weight: 600;
+}
+
+.add-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+}
+
+.add-row > span {
+    flex: none;
+    width: 46px;
+}
+
+.add-row > .field,
+.add-pair {
+    flex: 1;
+    min-width: 0;
+}
+
+.add-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.add-pair label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.add-pair .field {
+    width: 100%;
+}
+
+.add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.field {
+    height: 18px;
+    min-width: 0;
+    padding: 0 4px;
+    border: 1px solid #212121;
+    border-radius: 3px;
+    background: #2a2a2a;
+    color: #d2d2d2;
+    font: inherit;
+    outline: none;
+    user-select: text;
+}
+
+.field:focus {
+    border-color: var(--accent);
+}
+
+select.field {
+    background: #515151;
+    border-color: #303030;
+    color: #e4e4e4;
+}
+
+.btn {
+    height: 20px;
+    padding: 0 12px;
+    border: 1px solid #303030;
+    border-radius: 3px;
+    background: #585858;
+    color: #eeeeee;
+    font: inherit;
+}
+
+.btn:hover:not(:disabled) {
+    background: #676767;
+}
+
+.btn.primary {
+    background: var(--accent);
+    border-color: #2b5a96;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+}
+
+.sep {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--line);
+}
+
+.check {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 1px solid #212121;
+    border-radius: 3px;
+    background: #2a2a2a;
+}
+
+.check:checked {
+    background: #2a2a2a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='8'%3E%3Cpath d='M1 4l2.7 2.7L9 1' fill='none' stroke='%23e0e0e0' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat center;
+}
