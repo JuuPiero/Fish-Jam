@@ -13,7 +13,7 @@ export class LevelManager extends Component {
     @playGroundField({type: [JsonAsset]}) levels: JsonAsset[] = [];
     @playGroundField({type: CCInteger}) levelIndex: number = 0;
 
-    @playGroundField({type: Enum(DiffCurveType), group: "PLAYABLLE", label: "ĐỘ KHÓ"}) diffCurveType: DiffCurveType = DiffCurveType.None;
+    @playGroundField({type: Enum(DiffCurveType), group: "PLAYABLE", label: "ĐỘ KHÓ"}) diffCurveType: DiffCurveType = DiffCurveType.None;
 
     @property({ readonly: true, type: LevelData }) currentLevel: LevelData = null;
     @property(OrderManager) orderManager: OrderManager = null;
