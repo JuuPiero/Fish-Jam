@@ -1,0 +1,100 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "spine-plus",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "libs": "node ./scripts/build-libs.js",
+        "test": "node ./tests/run.js",
+        "preview": "node ./tests/preview/build.js"
+    },
+    "description": "i18n:spine-plus.description",
+    "main": "./dist/main.js",
+    "dependencies": {
+        "vue": "^3.1.4"
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "spine-core-42": "npm:@esotericsoftware/spine-core@4.2.120",
+        "spine-core-43": "npm:@esotericsoftware/spine-core@4.3.13",
+        "typescript": "^5.8.2"
+    },
+    "panels": {
+        "default": {
+            "title": "Spine Preview",
+            "type": "dockable",
+            "main": "dist/panels/default",
+            "icon": "./static/icon.png",
+            "size": {
+                "min-width": 360,
+                "min-height": 300,
+                "width": 900,
+                "height": 640
+            }
+        }
+    },
+    "contributions": {
+        "scene": {
+            "script": "./dist/scene.js"
+        },
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": false
+            }
+        },
+        "assets": {
+            "menu": {
+                "methods": "./dist/assets-menu.js",
+                "assetMenu": "onAssetMenu"
+            }
+        },
+        "inspector": {
+            "section": {
+                "node": {
+                    "SkeletonAnimation": "./dist/inspector/skeleton-animation.js"
+                }
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.panel",
+                "label": "i18n:spine-plus.menu.preview",
+                "message": "open-panel"
+            },
+            {
+                "path": "i18n:menu.extension/Spine Plus",
+                "label": "i18n:spine-plus.menu.diagnostics",
+                "message": "save-diagnostics"
+            }
+        ],
+        "messages": {
+            "open-panel": {
+                "methods": ["openPanel"]
+            },
+            "open-preview": {
+                "methods": ["openPreview"]
+            },
+            "take-pending-preview": {
+                "methods": ["takePendingPreview"]
+            },
+            "create-skeleton": {
+                "methods": ["createSkeleton"]
+            },
+            "save-diagnostics": {
+                "methods": ["saveDiagnostics"]
+            },
+            "preview-asset": {
+                "methods": ["default.previewAsset"]
+            }
+        }
+    }
+}

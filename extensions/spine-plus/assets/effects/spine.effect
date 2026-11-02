@@ -1,0 +1,89 @@
+// Spine Plus: unlit two color tint ("tint black"), like the official Spine
+// shaders. Vertex colors carry the light color (premultiplied for PMA
+// textures) and the dark color. The component sets the blend factors per
+// slot blend mode (normal / additive / multiply / screen) on its material
+// instances, so the blend state below is only the default.
+CCEffect %{
+  techniques:
+  - name: ui
+    passes:
+    - vert: spine-vs:vert
+      frag: spine-fs:frag
+      rasterizerState: &r1 { cullMode: none }
+      depthStencilState: &d1
+        depthTest: false
+        depthWrite: false
+      blendState: &b1
+        targets:
+        - blend: true
+          blendSrc: one
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: one
+          blendDstAlpha: one_minus_src_alpha
+      properties: &props
+        mainTexture: { value: white }
+    - vert: spine-vs:vert
+      frag: spine-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b1
+  - name: world
+    passes:
+    - vert: spine-vs:vert
+      frag: spine-fs:frag
+      rasterizerState: *r1
+      depthStencilState: &d2
+        depthTest: true
+        depthWrite: false
+      blendState: *b1
+      properties: *props
+    - vert: spine-vs:vert
+      frag: spine-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *r1
+      depthStencilState: *d2
+      blendState: *b1
+}%
+
+CCProgram spine-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;   // light color
+  in vec4 a_color2;  // dark color (alpha: 1 for premultiplied textures)
+
+  out vec2 v_uv;
+  out vec4 v_light;
+  out vec4 v_dark;
+
+  vec4 vert () {
+    v_uv = a_texCoord;
+    v_light = a_color;
+    v_dark = a_color2;
+    return cc_matProj * (cc_matView * (cc_matWorld * vec4(a_position, 1.0)));
+  }
+}%
+
+CCProgram spine-fs %{
+  precision highp float;
+
+  in vec2 v_uv;
+  in vec4 v_light;
+  in vec4 v_dark;
+
+  uniform sampler2D mainTexture;
+
+  vec4 frag () {
+    vec4 tex = texture(mainTexture, v_uv);
+    vec4 o;
+    o.a = tex.a * v_light.a;
+    o.rgb = ((tex.a - 1.0) * v_dark.a + 1.0 - tex.rgb) * v_dark.rgb + tex.rgb * v_light.rgb;
+    return o;
+  }
+}%
