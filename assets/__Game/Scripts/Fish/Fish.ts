@@ -5,6 +5,7 @@ import { FishConfigSA } from '../Data/FishConfigSA';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
 import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
+import { SkeletonAnimation } from 'db://spine-plus/SkeletonAnimation';
 const { ccclass, property } = _decorator;
 
 @ccclass('Fish')
@@ -15,7 +16,8 @@ export class Fish extends Component {
     @property({ readonly: true }) id: number = -1;
 
     @property(Node) visual: Node = null;
-    @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
+    // @property(sp.Skeleton) fishAnim: sp.Skeleton = null;
+    @property(SkeletonAnimation) spineAnim: SkeletonAnimation = null;
 
     onclick: () => void = null;
 
@@ -63,7 +65,7 @@ export class Fish extends Component {
  private _inBubbleScale = 1;
     protected onLoad(): void {
         this._button = this.getComponent(Button)
-        this.fishAnim = this.visual.getComponent(sp.Skeleton);
+        // this.fishAnim = this.visual.getComponent(sp.Skeleton);
     }
     protected onEnable(): void {
         this._button.node.on(Button.EventType.CLICK, this.onFishClick, this)
@@ -85,19 +87,26 @@ export class Fish extends Component {
         this.id = id;
         // const spriteFrame = ServiceLocator.get(FishConfigSA).fishs[id];
         // this.visual.getComponent(Sprite).spriteFrame = spriteFrame;
-        this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
+        // this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
+        this.spineAnim.setSkin(ServiceLocator.get(FishConfigSA).fishes[id]);
+
         // Match the visual to this sprite's real (trimmed) size instead of whatever size the
         // prefab happened to be baked with - fish types vary a lot in size, and that size is
         // what Bubble.calculateRadius() reads via getSize(), so bubbles size themselves
         // differently depending on which fish they actually contain.
-        this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
+        // this.visual.getComponent(UITransform).setContentSize(this.fishAnim.getComponent(UITransform).contentSize);
+        this.visual.getComponent(UITransform).setContentSize(this.spineAnim.getComponent(UITransform).contentSize);
 
         // Do not rely only on the prefab's defaultAnimation. Unlike Unity's
         // SkeletonAnimation (which reapplies its AnimationState after SetSkin), changing a
         // Cocos skin can leave the skeleton on its current setup pose. Explicitly keep the
         // swimming track looping so the tail/fins continue animating while this node tweens.
-        this.fishAnim.timeScale = 1;
-        this.fishAnim.setAnimation(0, 'animation', true);
+        // this.fishAnim.timeScale = 1;
+        this.spineAnim.timeScale = 1;
+
+        // this.fishAnim.setAnimation(0, 'animation', true);
+        this.spineAnim.setAnimation(0, 'animation', true);
+
     }
 
     onFishClick() {
@@ -175,7 +184,9 @@ export class Fish extends Component {
         this.node.setScale(Vec3.ONE);
         // Restore the authored Spine pose after flight. Never keep procedural bone offsets on
         // a fish that has landed and now acts as a persistent order/slot visual.
-        this.fishAnim.setAnimation(0, 'animation', true);
+        // this.fishAnim.setAnimation(0, 'animation', true);
+        this.spineAnim.setAnimation(0, 'animation', true);
+
         this._landingRotationTween?.stop();
         this._landingScaleTween?.stop();
         // `angle: 0` in a normal tween can choose the long numerical route (for example

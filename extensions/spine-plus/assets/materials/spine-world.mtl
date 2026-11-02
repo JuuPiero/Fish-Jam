@@ -1,0 +1,39 @@
+{
+  "__type__": "cc.Material",
+  "_name": "spine-world",
+  "_objFlags": 0,
+  "_native": "",
+  "_effectAsset": {
+    "__uuid__": "98126e72-e56a-4c18-81ca-c393f220438b",
+    "__expectedType__": "cc.EffectAsset"
+  },
+  "_techIdx": 1,
+  "_defines": [
+    {},
+    {}
+  ],
+  "_states": [
+    {
+      "rasterizerState": {},
+      "depthStencilState": {},
+      "blendState": {
+        "targets": [
+          {}
+        ]
+      }
+    },
+    {
+      "rasterizerState": {},
+      "depthStencilState": {},
+      "blendState": {
+        "targets": [
+          {}
+        ]
+      }
+    }
+  ],
+  "_props": [
+    {},
+    {}
+  ]
+}

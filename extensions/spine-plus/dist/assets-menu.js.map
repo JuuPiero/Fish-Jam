@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../source/assets-menu.ts"],
+  "sourcesContent": ["/** Assets panel context menu for Spine exports (spine-data assets). */\nexport function onAssetMenu(assetInfo: { uuid: string; importer?: string; isDirectory?: boolean }) {\n    if (!assetInfo?.uuid || assetInfo.importer !== 'spine-data') return [];\n    const items: Editor.Menu.ContextMenuItem[] = [\n        {\n            label: 'Spine Plus: Preview',\n            click() {\n                Editor.Message.send('spine-plus', 'open-preview', assetInfo.uuid);\n            },\n        },\n        {\n            label: 'Spine Plus: Create SkeletonAnimation',\n            click() {\n                Editor.Message.send('spine-plus', 'create-skeleton', assetInfo.uuid);\n            },\n        },\n    ];\n    return items;\n}\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AACO,SAAS,YAAY,WAAuE;AAC/F,SAAI,EAAC,+BAAW,SAAQ,UAAU,aAAa,eAAqB,CAAC,IACxB;AAAA,IACzC;AAAA,MACI,OAAO;AAAA,MACP,QAAQ;AACJ,eAAO,QAAQ,KAAK,cAAc,gBAAgB,UAAU,IAAI;AAAA,MACpE;AAAA,IACJ;AAAA,IACA;AAAA,MACI,OAAO;AAAA,MACP,QAAQ;AACJ,eAAO,QAAQ,KAAK,cAAc,mBAAmB,UAAU,IAAI;AAAA,MACvE;AAAA,IACJ;AAAA,EACJ;AAEJ;",
+  "names": []
+}
