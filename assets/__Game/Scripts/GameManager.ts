@@ -23,8 +23,8 @@ export class GameManager extends Component {
     @property({ type: Node, tooltip: 'Top-level node (e.g. the canvas root) fish are reparented onto while flying to a slot/order' })
     flyLayer: Node = null;
 
-    @property({ tooltip: 'Seconds of no fish taps before the store is opened as a nudge' })
-    idleTimeoutSeconds: number = 10;
+    @property({ tooltip: 'Seconds of no fish taps, while the bench has only one free slot left, before the level is auto-failed' })
+    stuckIdleTimeoutSeconds: number = 10;
 
     private _isGameOver = false;
     protected onLoad(): void {
@@ -66,7 +66,7 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
-        this.resetIdleWatch();
+        this.resetStuckIdleWatch();
     }
 
     onWinGame = () => {
@@ -75,7 +75,7 @@ export class GameManager extends Component {
         }
         AudioManager.instance.playOneShot('Win')
         this._isGameOver = true;
-        this.unschedule(this.onIdleTimeout);
+        this.unschedule(this.checkStuckIdle);
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_SOLVED)
         ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', { isWin: true })
     }
@@ -86,25 +86,29 @@ export class GameManager extends Component {
         }
         AudioManager.instance.playOneShot('Lose')
         this._isGameOver = true;
-        this.unschedule(this.onIdleTimeout);
+        this.unschedule(this.checkStuckIdle);
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_FAILED)
         ServiceLocator.get(NavigationContainer).stack.navigate('EndGameScreen', { isWin: false })
     }
 
-    // Nudges the player toward the store once they've gone quiet for a while mid-level. Keeps
-    // re-arming itself so a player who remains idle gets nudged again every `idleTimeoutSeconds`,
-    // not just once.
-    private onIdleTimeout = () => {
+    // Blunt safety net on top of isBoardStuck(): that check only runs right as a fish lands on
+    // the bench, so a player who simply stops tapping while sitting at the last free slot would
+    // otherwise never trigger it. Re-armed on every tap; if `stuckIdleTimeoutSeconds` pass with
+    // the bench still that full, fail the level outright - no reachability check, just idle time.
+    private checkStuckIdle = () => {
         if (this._isGameOver) {
             return;
         }
-        PlayableAdsManager.OpenStore();
-        this.scheduleOnce(this.onIdleTimeout, this.idleTimeoutSeconds);
+        if (this.levelManager.slotManager.getOccupiedCount() >= this.levelManager.slotManager.count - 1) {
+            EventBus.emit(GameEvents.LEVEL_LOSE);
+            return;
+        }
+        this.scheduleOnce(this.checkStuckIdle, this.stuckIdleTimeoutSeconds);
     }
 
-    private resetIdleWatch() {
-        this.unschedule(this.onIdleTimeout);
-        this.scheduleOnce(this.onIdleTimeout, this.idleTimeoutSeconds);
+    private resetStuckIdleWatch() {
+        this.unschedule(this.checkStuckIdle);
+        this.scheduleOnce(this.checkStuckIdle, this.stuckIdleTimeoutSeconds);
     }
 
     isPlayMusic = true;
@@ -162,7 +166,7 @@ export class GameManager extends Component {
         if (this._isGameOver) {
             return;
         }
-        this.resetIdleWatch();
+        this.resetStuckIdleWatch();
         AudioManager.instance.playOneShot('Click')
 
         fish.setInteractable(false);
