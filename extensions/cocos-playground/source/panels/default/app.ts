@@ -60,7 +60,119 @@ function saveNetworks(networks: Record<Builder, string>): void {
     }
 }
 
-type Stopped = { kind: 'build'; upload: boolean } | { kind: 'package' } | { kind: 'check' };
+/** What the searchable picker lists. */
+interface PickerItem {
+    id: number;
+    name: string;
+    hint?: string;
+}
+
+/** Lower-case, accents dropped, so "khung" finds "Khủng long" too. */
+const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+
+/**
+ * `<pg-picker>`: a select with a search box, for long application / concept lists. Emits `pick`
+ * with the item's id, or `action` for the extra entry at the bottom (+ New concept…).
+ */
+const Picker = defineComponent({
+    props: {
+        items: { type: Array as () => PickerItem[], required: true },
+        value: { type: Number as unknown as () => number | null, default: null },
+        placeholder: { type: String, default: 'Choose…' },
+        empty: { type: String, default: 'Nothing here' },
+        disabled: { type: Boolean, default: false },
+        loading: { type: Boolean, default: false },
+        action: { type: String, default: '' },
+        inputId: { type: String, default: '' },
+    },
+    emits: ['pick', 'action'],
+    setup(props, { emit }) {
+        const state = reactive({ open: false, query: '', active: 0 });
+        let root: HTMLElement | null = null;
+        const selected = computed(() => props.items.find((item) => item.id === props.value) ?? null);
+        const shown = computed(() => {
+            // Every word typed, in any order: "puzzle 1" finds "Puzzle Game 12".
+            const words = fold(state.query).split(/\s+/).filter(Boolean);
+            if (!words.length) return props.items;
+            return props.items.filter((item) => {
+                const text = fold(`${item.name} ${item.hint ?? ''}`);
+                return words.every((word) => text.includes(word));
+            });
+        });
+        /** Rows: the matches, then the action (always there, so a new concept is one click away). */
+        const rows = computed(() => shown.value.length + (props.action ? 1 : 0));
+
+        const outside = (event: Event) => {
+            if (root && !event.composedPath().includes(root)) close();
+        };
+        function open() {
+            if (props.disabled || props.loading) return;
+            state.open = true;
+            state.query = '';
+            const index = shown.value.findIndex((item) => item.id === props.value);
+            state.active = Math.max(0, index);
+            document.addEventListener('mousedown', outside, true);
+            setTimeout(() => {
+                (root?.querySelector('.pg-picker-search') as HTMLInputElement | null)?.focus();
+                scrollToActive();
+            });
+        }
+        function close() {
+            state.open = false;
+            document.removeEventListener('mousedown', outside, true);
+        }
+        function choose(index: number) {
+            if (index < shown.value.length) emit('pick', shown.value[index].id);
+            else if (props.action) emit('action');
+            close();
+            (root?.querySelector('.pg-picker-button') as HTMLElement | null)?.focus();
+        }
+        function scrollToActive() {
+            (root?.querySelector(`[data-row="${state.active}"]`) as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+        }
+        function key(event: KeyboardEvent) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!rows.value) return;
+                state.active = (state.active + (event.key === 'ArrowDown' ? 1 : rows.value - 1)) % rows.value;
+                setTimeout(scrollToActive);
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (rows.value) choose(Math.min(state.active, rows.value - 1));
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                close();
+                (root?.querySelector('.pg-picker-button') as HTMLElement | null)?.focus();
+            }
+        }
+        const typed = () => (state.active = 0);
+        const setRoot = (el: unknown) => (root = el as HTMLElement | null);
+        return { state, selected, shown, rows, open, close, choose, key, typed, setRoot, toggle: () => (state.open ? close() : open()) };
+    },
+    beforeUnmount() {
+        (this as unknown as { close(): void }).close();
+    },
+    template: `
+<div class="pg-picker" :ref="setRoot">
+    <button type="button" class="pg-picker-button pg-select" :id="inputId || undefined" :disabled="disabled || loading" @click="toggle()" @keydown.down.prevent="open()">
+        <span :class="['pg-ellipsis', { 'pg-dim': !selected }]">{{ loading ? 'Loading…' : selected ? selected.name : (items.length ? placeholder : empty) }}</span>
+        <span class="pg-picker-caret">&#x25BE;</span>
+    </button>
+    <div v-if="state.open" class="pg-picker-pop">
+        <input class="pg-input pg-picker-search" v-model="state.query" :placeholder="'Search ' + items.length + '…'" spellcheck="false" @input="typed()" @keydown="key($event)">
+        <div class="pg-picker-list">
+            <div v-for="(item, i) in shown" :key="item.id" :data-row="i" :class="['pg-picker-item', { active: i === state.active, selected: item.id === value }]" @mousemove="state.active = i" @click="choose(i)">
+                <span class="pg-ellipsis">{{ item.name }}</span>
+                <span v-if="item.hint" class="pg-dim pg-picker-hint">{{ item.hint }}</span>
+            </div>
+            <div v-if="!shown.length" class="pg-picker-none pg-dim">No match for "{{ state.query }}"</div>
+            <div v-if="action" :data-row="shown.length" :class="['pg-picker-item', 'pg-picker-action', { active: state.active === shown.length }]" @mousemove="state.active = shown.length" @click="choose(shown.length)">{{ action }}</div>
+        </div>
+    </div>
+</div>`,
+});
+
+type Stopped ={ kind: 'build'; upload: boolean } | { kind: 'package' } | { kind: 'check' };
 
 export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, template: string): PlaygroundApp {
     const ui = reactive({
@@ -106,6 +218,10 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
         const filter = ui.playableFilter.trim().toLowerCase();
         return filter ? ui.playables.filter((playable) => playable.name.toLowerCase().includes(filter)) : ui.playables;
     });
+    const appItems = computed<PickerItem[]>(() => ui.applications.map((app) => ({ id: app.id, name: app.name })));
+    const conceptItems = computed<PickerItem[]>(() =>
+        ui.concepts.map((concept) => ({ id: concept.id, name: concept.name, hint: concept.buildUploadedAt ? formatWhen(concept.buildUploadedAt) : 'no build' })),
+    );
     const checkErrors = computed(() => ui.check?.report.issues.filter((issue) => issue.level === 'error').length ?? 0);
 
     function fail(error: unknown) {
@@ -246,8 +362,8 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     const state = await run(() => bridge.signOut());
                     if (state) setPanel(state);
                 },
-                async pickApplication(event: Event) {
-                    const id = Number((event.target as HTMLSelectElement).value) || null;
+                async pickApplication(id: number | null) {
+                    if (id === ui.panel?.selection.applicationId) return;
                     ui.concepts = [];
                     ui.playables = [];
                     ui.creating = false;
@@ -255,15 +371,13 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     if (state) setPanel(state);
                     if (id) await loadConcepts(id);
                 },
-                async pickConcept(event: Event) {
-                    const value = (event.target as HTMLSelectElement).value;
-                    if (value === '__new') {
-                        ui.creating = true;
-                        ui.newConceptName = '';
-                        (event.target as HTMLSelectElement).value = String(ui.panel?.selection.conceptId ?? '');
-                        return;
-                    }
-                    const state = await run(() => bridge.select(ui.panel?.selection.applicationId ?? null, Number(value) || null));
+                startNewConcept() {
+                    ui.creating = true;
+                    ui.newConceptName = '';
+                },
+                async pickConcept(id: number | null) {
+                    if (id === ui.panel?.selection.conceptId) return;
+                    const state = await run(() => bridge.select(ui.panel?.selection.applicationId ?? null, id));
                     if (state) setPanel(state);
                     ui.playableFilter = '';
                     await loadPlayables();
@@ -410,6 +524,8 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                 busy,
                 canUpload,
                 shownPlayables,
+                appItems,
+                conceptItems,
                 checkErrors,
                 formatBytes,
                 formatWhen,
@@ -420,6 +536,7 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
     });
 
     const app = createApp(Root);
+    app.component('pg-picker', Picker);
     app.mount(el);
     const unsubscribe = bridge.onState(setPanel);
     void (async () => {

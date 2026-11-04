@@ -94,19 +94,12 @@
             <label class="pg-label" for="pg-app">Application</label>
             <div class="pg-line">
                 <img v-if="selectedApp?.iconUrl" class="pg-app-icon" :src="selectedApp.iconUrl" alt="">
-                <select id="pg-app" class="pg-select" :disabled="busy || ui.loadingApps" :value="ui.panel.selection.applicationId ?? ''" @change="pickApplication($event)">
-                    <option value="">{{ ui.loadingApps ? 'Loading…' : ui.applications.length ? 'Choose an application' : 'No applications' }}</option>
-                    <option v-for="app in ui.applications" :key="app.id" :value="app.id">{{ app.name }}</option>
-                </select>
+                <pg-picker input-id="pg-app" :items="appItems" :value="ui.panel.selection.applicationId" :disabled="busy" :loading="ui.loadingApps" placeholder="Choose an application" empty="No applications" @pick="pickApplication"></pg-picker>
             </div>
 
             <label class="pg-label" for="pg-concept">Concept</label>
             <div v-if="!ui.creating" class="pg-line">
-                <select id="pg-concept" class="pg-select" :disabled="busy || ui.loadingConcepts || !ui.panel.selection.applicationId" :value="ui.panel.selection.conceptId ?? ''" @change="pickConcept($event)">
-                    <option value="">{{ !ui.panel.selection.applicationId ? 'Choose an application first' : ui.loadingConcepts ? 'Loading…' : 'Choose a concept' }}</option>
-                    <option v-for="concept in ui.concepts" :key="concept.id" :value="concept.id">{{ concept.name }}</option>
-                    <option v-if="ui.panel.selection.applicationId && !ui.loadingConcepts" value="__new">+ New concept…</option>
-                </select>
+                <pg-picker input-id="pg-concept" :items="conceptItems" :value="ui.panel.selection.conceptId" :disabled="busy || !ui.panel.selection.applicationId" :loading="ui.loadingConcepts" :placeholder="ui.panel.selection.applicationId ? 'Choose a concept' : 'Choose an application first'" :empty="ui.panel.selection.applicationId ? 'No concepts yet' : 'Choose an application first'" action="+ New concept…" @pick="pickConcept" @action="startNewConcept"></pg-picker>
             </div>
             <div v-else class="pg-line">
                 <input class="pg-input" v-model="ui.newConceptName" placeholder="New concept name" spellcheck="false" @keydown.enter="createConcept()" @keydown.esc="ui.creating = false">

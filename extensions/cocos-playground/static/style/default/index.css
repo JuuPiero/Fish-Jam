@@ -149,6 +149,26 @@
 .pg-gap-s { margin-top: 8px; }
 .pg-warn-text { color: #e0b03c; }
 
+/* searchable picker (application / concept) */
+.pg-picker { position: relative; flex: 1; min-width: 0; }
+.pg-picker-button { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left; padding: 0 6px; }
+.pg-picker-button > .pg-ellipsis { flex: 1; min-width: 0; }
+.pg-picker-caret { flex: none; font-size: 10px; color: var(--pg-dim); }
+.pg-picker-pop {
+    position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 20; padding: 4px; border-radius: 4px;
+    background: var(--color-normal-fill-emphasis, #2c2c2c); border: 1px solid var(--pg-accent-border); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.pg-picker-search { width: 100%; flex: none; }
+.pg-picker-list { margin-top: 4px; max-height: 240px; overflow-y: auto; }
+.pg-picker-item { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; border-radius: 3px; cursor: pointer; color: var(--pg-bright); }
+.pg-picker-item > .pg-ellipsis { flex: 1; min-width: 0; }
+.pg-picker-item.active { background: rgba(47, 125, 225, 0.35); }
+.pg-picker-item.selected { font-weight: bold; }
+.pg-picker-item.selected::before { content: '✓'; flex: none; font-size: 10px; color: var(--pg-green); }
+.pg-picker-hint { flex: none; }
+.pg-picker-none { padding: 6px; }
+.pg-picker-action { color: #6fb3ff; border-top: 1px solid rgba(255, 255, 255, 0.06); margin-top: 2px; }
+
 /* playables */
 .pg-playables { margin-top: 6px; max-height: 260px; overflow-y: auto; }
 

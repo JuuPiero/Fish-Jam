@@ -19665,6 +19665,101 @@ ${codeFrame}` : message);
     } catch {
     }
   }
+  var fold = (text) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+  var Picker = defineComponent({
+    props: {
+      items: { type: Array, required: true },
+      value: { type: Number, default: null },
+      placeholder: { type: String, default: "Choose\u2026" },
+      empty: { type: String, default: "Nothing here" },
+      disabled: { type: Boolean, default: false },
+      loading: { type: Boolean, default: false },
+      action: { type: String, default: "" },
+      inputId: { type: String, default: "" }
+    },
+    emits: ["pick", "action"],
+    setup(props, { emit: emit2 }) {
+      const state2 = reactive({ open: false, query: "", active: 0 });
+      let root = null;
+      const selected = computed2(() => props.items.find((item) => item.id === props.value) ?? null);
+      const shown = computed2(() => {
+        const words = fold(state2.query).split(/\s+/).filter(Boolean);
+        if (!words.length) return props.items;
+        return props.items.filter((item) => {
+          const text = fold(`${item.name} ${item.hint ?? ""}`);
+          return words.every((word) => text.includes(word));
+        });
+      });
+      const rows = computed2(() => shown.value.length + (props.action ? 1 : 0));
+      const outside = (event) => {
+        if (root && !event.composedPath().includes(root)) close();
+      };
+      function open() {
+        if (props.disabled || props.loading) return;
+        state2.open = true;
+        state2.query = "";
+        const index = shown.value.findIndex((item) => item.id === props.value);
+        state2.active = Math.max(0, index);
+        document.addEventListener("mousedown", outside, true);
+        setTimeout(() => {
+          root?.querySelector(".pg-picker-search")?.focus();
+          scrollToActive();
+        });
+      }
+      function close() {
+        state2.open = false;
+        document.removeEventListener("mousedown", outside, true);
+      }
+      function choose2(index) {
+        if (index < shown.value.length) emit2("pick", shown.value[index].id);
+        else if (props.action) emit2("action");
+        close();
+        root?.querySelector(".pg-picker-button")?.focus();
+      }
+      function scrollToActive() {
+        root?.querySelector(`[data-row="${state2.active}"]`)?.scrollIntoView({ block: "nearest" });
+      }
+      function key(event) {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!rows.value) return;
+          state2.active = (state2.active + (event.key === "ArrowDown" ? 1 : rows.value - 1)) % rows.value;
+          setTimeout(scrollToActive);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          if (rows.value) choose2(Math.min(state2.active, rows.value - 1));
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          close();
+          root?.querySelector(".pg-picker-button")?.focus();
+        }
+      }
+      const typed = () => state2.active = 0;
+      const setRoot = (el) => root = el;
+      return { state: state2, selected, shown, rows, open, close, choose: choose2, key, typed, setRoot, toggle: () => state2.open ? close() : open() };
+    },
+    beforeUnmount() {
+      this.close();
+    },
+    template: `
+<div class="pg-picker" :ref="setRoot">
+    <button type="button" class="pg-picker-button pg-select" :id="inputId || undefined" :disabled="disabled || loading" @click="toggle()" @keydown.down.prevent="open()">
+        <span :class="['pg-ellipsis', { 'pg-dim': !selected }]">{{ loading ? 'Loading\u2026' : selected ? selected.name : (items.length ? placeholder : empty) }}</span>
+        <span class="pg-picker-caret">&#x25BE;</span>
+    </button>
+    <div v-if="state.open" class="pg-picker-pop">
+        <input class="pg-input pg-picker-search" v-model="state.query" :placeholder="'Search ' + items.length + '\u2026'" spellcheck="false" @input="typed()" @keydown="key($event)">
+        <div class="pg-picker-list">
+            <div v-for="(item, i) in shown" :key="item.id" :data-row="i" :class="['pg-picker-item', { active: i === state.active, selected: item.id === value }]" @mousemove="state.active = i" @click="choose(i)">
+                <span class="pg-ellipsis">{{ item.name }}</span>
+                <span v-if="item.hint" class="pg-dim pg-picker-hint">{{ item.hint }}</span>
+            </div>
+            <div v-if="!shown.length" class="pg-picker-none pg-dim">No match for "{{ state.query }}"</div>
+            <div v-if="action" :data-row="shown.length" :class="['pg-picker-item', 'pg-picker-action', { active: state.active === shown.length }]" @mousemove="state.active = shown.length" @click="choose(shown.length)">{{ action }}</div>
+        </div>
+    </div>
+</div>`
+  });
   function createPlaygroundApp(el, bridge2, template) {
     const ui = reactive({
       panel: null,
@@ -19708,6 +19803,10 @@ ${codeFrame}` : message);
       const filter = ui.playableFilter.trim().toLowerCase();
       return filter ? ui.playables.filter((playable) => playable.name.toLowerCase().includes(filter)) : ui.playables;
     });
+    const appItems = computed2(() => ui.applications.map((app2) => ({ id: app2.id, name: app2.name })));
+    const conceptItems = computed2(
+      () => ui.concepts.map((concept) => ({ id: concept.id, name: concept.name, hint: concept.buildUploadedAt ? formatWhen(concept.buildUploadedAt) : "no build" }))
+    );
     const checkErrors = computed2(() => ui.check?.report.issues.filter((issue) => issue.level === "error").length ?? 0);
     function fail(error) {
       ui.error = error instanceof Error ? error.message : String(error);
@@ -19838,8 +19937,8 @@ ${codeFrame}` : message);
             const state2 = await run(() => bridge2.signOut());
             if (state2) setPanel(state2);
           },
-          async pickApplication(event) {
-            const id = Number(event.target.value) || null;
+          async pickApplication(id) {
+            if (id === ui.panel?.selection.applicationId) return;
             ui.concepts = [];
             ui.playables = [];
             ui.creating = false;
@@ -19847,15 +19946,13 @@ ${codeFrame}` : message);
             if (state2) setPanel(state2);
             if (id) await loadConcepts(id);
           },
-          async pickConcept(event) {
-            const value = event.target.value;
-            if (value === "__new") {
-              ui.creating = true;
-              ui.newConceptName = "";
-              event.target.value = String(ui.panel?.selection.conceptId ?? "");
-              return;
-            }
-            const state2 = await run(() => bridge2.select(ui.panel?.selection.applicationId ?? null, Number(value) || null));
+          startNewConcept() {
+            ui.creating = true;
+            ui.newConceptName = "";
+          },
+          async pickConcept(id) {
+            if (id === ui.panel?.selection.conceptId) return;
+            const state2 = await run(() => bridge2.select(ui.panel?.selection.applicationId ?? null, id));
             if (state2) setPanel(state2);
             ui.playableFilter = "";
             await loadPlayables();
@@ -20000,6 +20097,8 @@ ${codeFrame}` : message);
           busy,
           canUpload,
           shownPlayables,
+          appItems,
+          conceptItems,
           checkErrors,
           formatBytes,
           formatWhen,
@@ -20009,6 +20108,7 @@ ${codeFrame}` : message);
       }
     });
     const app = createApp(Root);
+    app.component("pg-picker", Picker);
     app.mount(el);
     const unsubscribe = bridge2.onState(setPanel);
     void (async () => {
@@ -20049,7 +20149,10 @@ ${codeFrame}` : message);
   var ago = (min) => new Date(Date.now() - min * 6e4).toISOString();
   var apps = [
     { id: 1, name: "Hexa Sort 3D", iconUrl: null },
-    { id: 2, name: "Bus Jam Escape", iconUrl: null }
+    { id: 2, name: "Bus Jam Escape", iconUrl: null },
+    { id: 3, name: "Kh\u1EE7ng Long Ch\u1EA1y", iconUrl: null },
+    // Plenty more, as a real dashboard grows: the picker needs its search.
+    ...Array.from({ length: 30 }, (_, i) => ({ id: 100 + i, name: `Puzzle Game ${String(i + 1).padStart(2, "0")}`, iconUrl: null }))
   ];
   var concepts = {
     1: [
@@ -20367,11 +20470,44 @@ ${codeFrame}` : message);
     byText("button", "Sign in with browser").click();
     check("pending code shown", await until(() => $(".pg-code")?.textContent === "KQWX-7RTM"));
     check("signed in after approval", await until(() => !!$("#pg-app")));
-    check("applications loaded", await until(() => $$("#pg-app option").length === 3), `${$$("#pg-app option").length} options`);
-    check("concept select disabled before app", !!$("#pg-concept")?.disabled);
-    choose($("#pg-app"), "1");
-    check("concepts loaded (+ New)", await until(() => $$("#pg-concept option").length === 4), `${$$("#pg-concept option").length} options`);
-    choose($("#pg-concept"), "11");
+    check("applications loaded", await until(() => $("#pg-app").textContent.includes("Choose an application") && !$("#pg-app").disabled));
+    check("concept picker disabled before app", !!$("#pg-concept")?.disabled);
+    $("#pg-app").click();
+    const search = () => $(".pg-picker-search");
+    const items = () => $$(".pg-picker-pop .pg-picker-item");
+    check("picker opens with search focused", await until(() => !!search() && document.activeElement === search() && items().length === apps.length), `${items().length} items`);
+    check("long list scrolls", $(".pg-picker-list").scrollHeight > $(".pg-picker-list").clientHeight);
+    const type = async (text) => {
+      search().value = text;
+      search().dispatchEvent(new Event("input"));
+      await tick();
+    };
+    await type("game 2");
+    check("search filters", items().length === 12 && items().every((el) => /Puzzle Game \d*2\d*/.test(el.textContent)), items().map((el) => el.textContent.trim()).slice(0, 3).join(","));
+    await type("2 PUZZLE game");
+    check("search by words in any order, any case", items().length === 12, `${items().length}`);
+    await type("khung long");
+    check("search ignores accents", items().length === 1 && items()[0].textContent.includes("Kh\u1EE7ng Long Ch\u1EA1y"));
+    await type("zzz");
+    check("no match message", items().length === 0 && !!$(".pg-picker-none")?.textContent.includes("No match"));
+    search().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    check("Esc closes", await until(() => !$(".pg-picker-pop")));
+    $("#pg-app").click();
+    await until(() => !!search());
+    await type("hexa");
+    search().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    check("Enter picks the match", await until(() => calls.includes("select 1 null") && $("#pg-app").textContent.includes("Hexa Sort 3D")));
+    $("#pg-app").click();
+    await until(() => !!search());
+    document.querySelector(".pg-hint, .pg-card-title").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, composed: true }));
+    check("click outside closes", await until(() => !$(".pg-picker-pop")));
+    $("#pg-concept").click();
+    check("concepts listed + New concept action", await until(() => items().length === 3 && items()[2].textContent.includes("+ New concept")), items().map((el) => el.textContent.trim()).join(" | "));
+    check("concept shows upload time", /today|ago/.test(items()[0].textContent) && items()[1].textContent.includes("no build"), items().map((el) => el.textContent.trim()).join(" | "));
+    await type("asmr");
+    check("action stays while searching", items().length === 2 && items()[1].textContent.includes("+ New concept"));
+    await type("");
+    items()[0].click();
     await until(() => calls.includes("select 1 11"));
     check("concept selected", await until(() => $(".pg-card")?.textContent.includes("Last upload: ") ?? false));
     check("Build & Upload enabled", await until(() => !byText("button", "Build & Upload").hasAttribute("disabled")));
@@ -20417,14 +20553,16 @@ ${codeFrame}` : message);
     check("single-network summary", [...$$(".pg-export")[0].querySelectorAll(".pg-size-line")].some((l) => l.textContent.includes("super-html: 1 of 1 over the limit (Facebook (html))")));
     byText(".pg-export button", "Sizes").click();
     check("sizes close", await until(() => !$(".pg-sizes")));
-    choose($("#pg-concept"), "__new");
+    $("#pg-concept").click();
+    await until(() => !!$(".pg-picker-action"));
+    $(".pg-picker-action").click();
     check("new concept input", await until(() => !!$('input[placeholder="New concept name"]')));
     const nameInput = $('input[placeholder="New concept name"]');
     nameInput.value = "Hexa - Boss level";
     nameInput.dispatchEvent(new Event("input"));
     await tick();
     byText("button", "Create").click();
-    check("concept created and selected", await until(() => $("#pg-concept")?.selectedOptions[0]?.textContent === "Hexa - Boss level"));
+    check("concept created and selected", await until(() => $("#pg-concept")?.textContent.includes("Hexa - Boss level") ?? false));
     check("created notice", await until(() => $(".pg-status").textContent.includes("created")));
     byText("button", "Build & Upload").click();
     check("build stopped at the check", await until(() => !!$(".pg-check") && $(".pg-check").textContent.includes("Build stopped")), $(".pg-check")?.textContent ?? "");

@@ -33,6 +33,9 @@ const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const apps: ApplicationItem[] = [
     { id: 1, name: 'Hexa Sort 3D', iconUrl: null },
     { id: 2, name: 'Bus Jam Escape', iconUrl: null },
+    { id: 3, name: 'Khủng Long Chạy', iconUrl: null },
+    // Plenty more, as a real dashboard grows: the picker needs its search.
+    ...Array.from({ length: 30 }, (_, i) => ({ id: 100 + i, name: `Puzzle Game ${String(i + 1).padStart(2, '0')}`, iconUrl: null })),
 ];
 const concepts: Record<number, ConceptItem[]> = {
     1: [
@@ -360,12 +363,47 @@ async function interact() {
     byText('button', 'Sign in with browser')!.click();
     check('pending code shown', await until(() => $('.pg-code')?.textContent === 'KQWX-7RTM'));
     check('signed in after approval', await until(() => !!$('#pg-app')));
-    check('applications loaded', await until(() => $$('#pg-app option').length === 3), `${$$('#pg-app option').length} options`);
-    check('concept select disabled before app', !!$<HTMLSelectElement>('#pg-concept')?.disabled);
+    check('applications loaded', await until(() => $('#pg-app')!.textContent!.includes('Choose an application') && !$<HTMLButtonElement>('#pg-app')!.disabled));
+    check('concept picker disabled before app', !!$<HTMLButtonElement>('#pg-concept')?.disabled);
 
-    choose($<HTMLSelectElement>('#pg-app')!, '1');
-    check('concepts loaded (+ New)', await until(() => $$('#pg-concept option').length === 4), `${$$('#pg-concept option').length} options`);
-    choose($<HTMLSelectElement>('#pg-concept')!, '11');
+    // Searchable application picker
+    $('#pg-app')!.click();
+    const search = () => $<HTMLInputElement>('.pg-picker-search');
+    const items = () => $$('.pg-picker-pop .pg-picker-item');
+    check('picker opens with search focused', await until(() => !!search() && document.activeElement === search() && items().length === apps.length), `${items().length} items`);
+    check('long list scrolls', ($('.pg-picker-list')!.scrollHeight > $('.pg-picker-list')!.clientHeight));
+    const type = async (text: string) => {
+        search()!.value = text;
+        search()!.dispatchEvent(new Event('input'));
+        await tick();
+    };
+    await type('game 2');
+    check('search filters', items().length === 12 && items().every((el) => /Puzzle Game \d*2\d*/.test(el.textContent!)), items().map((el) => el.textContent!.trim()).slice(0, 3).join(','));
+    await type('2 PUZZLE game');
+    check('search by words in any order, any case', items().length === 12, `${items().length}`);
+    await type('khung long');
+    check('search ignores accents', items().length === 1 && items()[0].textContent!.includes('Khủng Long Chạy'));
+    await type('zzz');
+    check('no match message', items().length === 0 && !!$('.pg-picker-none')?.textContent!.includes('No match'));
+    search()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check('Esc closes', await until(() => !$('.pg-picker-pop')));
+    $('#pg-app')!.click();
+    await until(() => !!search());
+    await type('hexa');
+    search()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    check('Enter picks the match', await until(() => calls.includes('select 1 null') && $('#pg-app')!.textContent!.includes('Hexa Sort 3D')));
+    $('#pg-app')!.click();
+    await until(() => !!search());
+    document.querySelector('.pg-hint, .pg-card-title')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true }));
+    check('click outside closes', await until(() => !$('.pg-picker-pop')));
+
+    $('#pg-concept')!.click();
+    check('concepts listed + New concept action', await until(() => items().length === 3 && items()[2].textContent!.includes('+ New concept')), items().map((el) => el.textContent!.trim()).join(' | '));
+    check('concept shows upload time', /today|ago/.test(items()[0].textContent!) && items()[1].textContent!.includes('no build'), items().map((el) => el.textContent!.trim()).join(' | '));
+    await type('asmr');
+    check('action stays while searching', items().length === 2 && items()[1].textContent!.includes('+ New concept'));
+    await type('');
+    items()[0].click();
     await until(() => calls.includes('select 1 11'));
     check('concept selected', await until(() => $('.pg-card')?.textContent!.includes('Last upload: ') ?? false));
     check('Build & Upload enabled', await until(() => !byText('button', 'Build & Upload')!.hasAttribute('disabled')));
@@ -418,14 +456,16 @@ async function interact() {
     byText('.pg-export button', 'Sizes')!.click();
     check('sizes close', await until(() => !$('.pg-sizes')));
 
-    choose($<HTMLSelectElement>('#pg-concept')!, '__new');
+    $('#pg-concept')!.click();
+    await until(() => !!$('.pg-picker-action'));
+    $('.pg-picker-action')!.click();
     check('new concept input', await until(() => !!$('input[placeholder="New concept name"]')));
     const nameInput = $<HTMLInputElement>('input[placeholder="New concept name"]')!;
     nameInput.value = 'Hexa - Boss level';
     nameInput.dispatchEvent(new Event('input'));
     await tick();
     byText('button', 'Create')!.click();
-    check('concept created and selected', await until(() => $<HTMLSelectElement>('#pg-concept')?.selectedOptions[0]?.textContent === 'Hexa - Boss level'));
+    check('concept created and selected', await until(() => $('#pg-concept')?.textContent!.includes('Hexa - Boss level') ?? false));
     check('created notice', await until(() => $('.pg-status')!.textContent!.includes('created')));
 
     // Build & Upload: stops at the check, then at the field changes
