@@ -1,6 +1,6 @@
 'use strict';
 module.exports = {
-    description: '一份空白的扩展',
-    show_log: '输出日志',
+    description: 'Cocos Playground：playground 字段，构建并上传 playable 到后台',
+    open_panel: '打开面板',
     export_playable: '导出 Playable 包',
 };

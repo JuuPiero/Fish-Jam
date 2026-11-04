@@ -7,7 +7,7 @@ import { scanScenes } from './analysis/scanScenes';
 import { PlayableManifest } from './analysis/types';
 
 /** The extension lives at `<project>/extensions/cocos-playground`. */
-function findProjectRoot(): string {
+export function findProjectRoot(): string {
     return path.join(__dirname, '..', '..', '..');
 }
 
@@ -70,9 +70,11 @@ export function buildManifest(assetsDir: string, webMobileDir: string): Playable
  * "Web Mobile" platform via Cocos Creator's own Build panel first, then uploads the resulting
  * zip by hand through the web frontend.
  */
-export async function exportPlayablePackage(projectRoot: string = findProjectRoot()): Promise<string> {
+export async function exportPlayablePackage(
+    projectRoot: string = findProjectRoot(),
+    webMobileDir: string = path.join(projectRoot, 'build', 'web-mobile'),
+): Promise<string> {
     const assetsDir = path.join(projectRoot, 'assets');
-    const webMobileDir = path.join(projectRoot, 'build', 'web-mobile');
     const indexHtmlPath = path.join(webMobileDir, 'index.html');
 
     if (!fs.existsSync(indexHtmlPath)) {

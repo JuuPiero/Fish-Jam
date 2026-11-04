@@ -271,6 +271,33 @@ game.
 Lệnh Export không tự build: luôn build lại trước khi export, để manifest khớp với code và scene hiện
 tại.
 
+### Panel Cocos Playground: build và upload thẳng lên dashboard
+
+Mở bằng menu **Cocos Playground → Open panel**.
+
+1. **Server:** bấm nút ⚙ để đổi URL gốc của dashboard. Mặc định là
+   `https://playground.168-138-171-60.sslip.io`. Mỗi server giữ phiên đăng nhập riêng.
+2. **Đăng nhập:** bấm **Sign in with browser**. Trình duyệt mở trang `/extension/connect` của
+   dashboard. Kiểm tra mã trên trang trùng với mã trong panel, rồi bấm **Allow**. Panel tự nhận phiên
+   đăng nhập:
+   - phiên đăng nhập là một token, có hạn 90 ngày;
+   - token mang đúng quyền của tài khoản đã đăng nhập;
+   - token lưu ở `~/.cocos-playground/config.json`.
+
+   Thu hồi token ở **Settings → Cocos Creator extension** trên dashboard.
+3. **Upload target:** chọn Application và Concept. Muốn tạo concept mới thì chọn **+ New concept…**.
+   Lựa chọn này lưu theo project, trong `local/cocos-playground.json`.
+4. **Build** chạy lại bản build Web Mobile gần nhất trong Build panel, rồi đóng gói thành zip.
+   **Build & Upload** làm thêm bước upload vào concept đang chọn. Trước lần đầu, phải build Web Mobile
+   một lần trong Build panel, vì panel lặp lại đúng các tuỳ chọn của lần build đó.
+5. **Exported builds** liệt kê các zip trong `build/cocos-playground-export`. Mỗi zip có các nút:
+   - **Upload:** gửi zip lên concept đang chọn;
+   - **Reveal:** mở thư mục chứa zip;
+   - **Delete:** xoá zip; bấm hai lần để xác nhận.
+
+   **Package build/web-mobile** đóng gói bản build hiện có mà không build lại, giống lệnh Export
+   playable.
+
 **Extension đọc những gì:**
 
 - **Script:** mọi file `.ts` dưới `assets/`, để tìm `@ccclass` và `@playGroundField`.
@@ -367,8 +394,11 @@ tự bổ sung các trường này. Giá trị cũ dạng `{ "<property>": value
 ```
 runtime/assets/PlayGroundField.ts   decorator và phần áp giá trị (chạy trong game)
 runtime/assets/OpenStore.ts         openStore() / gameEnd()
-source/main.ts                      các lệnh menu
+source/main.ts                      các lệnh menu + message cho panel
 source/export.ts                    Export playable: quét, tạo manifest, zip build
+source/connect/                     panel ↔ dashboard: config, API, đăng nhập, build task, upload
+source/panels/default/              panel (Vue 3; template static/template/vue/app.html)
+tests/preview/                      chạy panel trên trình duyệt với bridge giả (npm run preview)
 source/analysis/scanDecorators.ts   đọc @ccclass / @playGroundField / enum từ source TS
 source/analysis/scanScenes.ts       đọc giá trị từ .scene / .prefab
 source/analysis/assets.ts           uuid nén, .meta, file native trong build

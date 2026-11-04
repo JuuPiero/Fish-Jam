@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cocos Playground panel preview</title>
+<style>
+:root {
+    --color-normal-fill: #232323; --color-normal-fill-emphasis: #2c2c2c; --color-normal-fill-weaker: #1b1b1b;
+    --color-normal-border: #171717; --color-default-fill: #3c3c3c; --color-default-border: #1e1e1e;
+    --color-normal-contrast: #ccc; --color-normal-contrast-weakest: #f2f2f2; --color-normal-contrast-emphasis: #8c8c8c;
+    --color-focus-fill: #2f7de1; --color-focus-border: #2f7de1;
+}
+html, body { margin: 0; height: 100%; font-family: sans-serif; }
+body { display: flex; flex-direction: column; }
+#result { white-space: pre; font: 12px monospace; padding: 8px; color: #eee; background: #111; }
+/* Cocos Playground panel. Cocos theme colors: --color-*-contrast-weakest is the brightest text. */
+:host { display: flex; flex-direction: column; }
+#app { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.pg {
+    --pg-accent: var(--color-focus-fill, #2f7de1);
+    --pg-accent-border: var(--color-focus-border, #1d5fb8);
+    --pg-text: var(--color-normal-contrast, #ccc);
+    --pg-bright: var(--color-normal-contrast-weakest, #f2f2f2);
+    --pg-dim: var(--color-normal-contrast-emphasis, #8c8c8c);
+    --pg-border: var(--color-normal-border, #171717);
+    --pg-red: #e0625b;
+    --pg-green: #5fbf6a;
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    font-size: 12px; color: var(--pg-text); background: var(--color-normal-fill, #232323);
+    user-select: none;
+}
+.pg *, .pg *::before, .pg *::after { box-sizing: border-box; }
+.pg-spacer { flex: 1; }
+.pg-grow { flex: 1; min-width: 0; }
+.pg-min { min-width: 0; }
+.pg-dim { color: var(--pg-dim); font-size: 11px; }
+.pg-strong { color: var(--pg-bright); font-weight: bold; }
+.pg-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-wrap { white-space: normal; word-break: break-word; user-select: text; }
+.pg-error-text { color: var(--pg-red); }
+.pg-ok-text { color: var(--pg-green); }
+
+/* ------------------------------------------------------------- toolbar */
+.pg-toolbar {
+    display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; flex: none; height: 30px;
+    background: var(--color-normal-fill-emphasis, #2c2c2c); border-bottom: 1px solid var(--pg-border);
+}
+.pg-logo {
+    width: 18px; height: 18px; border-radius: 4px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; color: #fff; background: linear-gradient(135deg, #3d8bff, #7b4dff);
+}
+.pg-title { color: var(--pg-bright); font-weight: bold; white-space: nowrap; }
+.pg-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------- buttons */
+.pg-btn, .pg-icon, .pg-mini {
+    font: inherit; color: var(--pg-text); background: var(--color-default-fill, #3c3c3c);
+    border: 1px solid var(--color-default-border, #1e1e1e); border-radius: 3px; cursor: pointer; white-space: nowrap;
+}
+.pg-btn { height: 24px; padding: 0 12px; }
+.pg-btn.big { height: 30px; padding: 0 16px; font-weight: bold; }
+.pg-icon { width: 22px; height: 22px; padding: 0; font-size: 14px; line-height: 18px; flex: none; }
+.pg-icon.active { color: #fff; background: var(--pg-accent); border-color: var(--pg-accent-border); }
+.pg-mini { height: 20px; padding: 0 7px; font-size: 11px; }
+.pg-btn:hover:not(:disabled), .pg-icon:hover:not(:disabled), .pg-mini:hover:not(:disabled) { filter: brightness(1.2); }
+.pg-btn:disabled, .pg-icon:disabled, .pg-mini:disabled { opacity: 0.4; cursor: default; }
+.pg-btn.primary, .pg-mini.primary { color: #fff; background: var(--pg-accent); border-color: var(--pg-accent-border); }
+.pg-mini.danger { color: #fff; background: #b5433b; border-color: #7f2c26; }
+.pg-link {
+    font: inherit; font-size: 11px; color: #6fb3ff; background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap;
+}
+.pg-link:hover:not(:disabled) { text-decoration: underline; }
+.pg-link:disabled { color: var(--pg-dim); opacity: 0.6; cursor: default; }
+
+/* -------------------------------------------------------------- inputs */
+.pg-input, .pg-select {
+    font: inherit; flex: 1; min-width: 0; height: 24px; padding: 0 7px; color: var(--pg-bright);
+    background: var(--color-normal-fill-weaker, #1b1b1b); border: 1px solid var(--pg-border); border-radius: 3px; outline: none;
+    user-select: text;
+}
+.pg-select { padding: 0 4px; cursor: pointer; }
+.pg-select:disabled { opacity: 0.55; cursor: default; }
+.pg-input:focus, .pg-select:focus { border-color: var(--pg-accent); }
+.pg-select option { background: #2b2b2b; color: var(--pg-bright); }
+.pg-label { display: block; margin: 8px 0 3px; color: var(--pg-dim); font-size: 11px; }
+
+/* ---------------------------------------------------------------- body */
+.pg-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.pg-card {
+    flex: none; padding: 10px; border-radius: 5px;
+    background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.pg-card.bad { border-color: rgba(224, 98, 91, 0.45); background: rgba(224, 98, 91, 0.06); }
+.pg-card-head { display: flex; align-items: center; gap: 6px; }
+.pg-card-title { color: var(--pg-bright); font-weight: bold; font-size: 12px; margin-bottom: 2px; }
+.pg-card-head .pg-card-title { margin-bottom: 0; }
+.pg-hint { margin: 3px 0 0; white-space: normal; line-height: 1.4; }
+.pg-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pg-gap { margin-top: 10px; }
+.pg-center { justify-content: center; }
+.pg-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.pg-account { max-width: 60%; }
+
+.pg-status-line { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-width: 0; }
+.pg-pill {
+    flex: none; padding: 1px 8px; border-radius: 9px; font-size: 10px; font-weight: bold;
+    background: rgba(255, 255, 255, 0.08); color: var(--pg-dim);
+}
+.pg-pill.ok { background: rgba(95, 191, 106, 0.18); color: var(--pg-green); }
+.pg-pill.bad { background: rgba(224, 98, 91, 0.18); color: var(--pg-red); }
+
+.pg-avatar {
+    flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: bold; color: #fff; background: linear-gradient(135deg, #3d8bff, #7b4dff);
+}
+.pg-app-icon { width: 24px; height: 24px; border-radius: 5px; object-fit: cover; flex: none; }
+
+/* sign-in code */
+.pg-code {
+    margin: 12px auto 10px; padding: 8px 14px; width: fit-content; border-radius: 5px;
+    font: bold 22px/1 Consolas, 'Courier New', monospace; letter-spacing: 3px; color: var(--pg-bright);
+    background: var(--color-normal-fill-weaker, #1b1b1b); border: 1px dashed rgba(255, 255, 255, 0.18);
+    user-select: text;
+}
+
+/* busy */
+.pg-busy { margin-top: 10px; }
+.pg-progress { margin-top: 6px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.4); overflow: hidden; position: relative; }
+.pg-progress > div { height: 100%; background: var(--pg-accent); transition: width 0.2s; }
+.pg-progress > div.indeterminate { position: absolute; width: 35%; animation: pg-slide 1.1s ease-in-out infinite; }
+@keyframes pg-slide { from { left: -35%; } to { left: 100%; } }
+.pg-spinner {
+    flex: none; width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.15); border-top-color: var(--pg-accent); animation: pg-spin 0.8s linear infinite;
+}
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+
+/* exports */
+.pg-exports { padding-bottom: 6px; }
+.pg-exports .pg-card-head { margin-bottom: 6px; }
+.pg-count { padding: 0 6px; border-radius: 8px; font-size: 10px; background: rgba(255, 255, 255, 0.08); color: var(--pg-dim); }
+.pg-empty { padding: 14px 4px; text-align: center; }
+.pg-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 3px; min-width: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.pg-row:first-of-type { border-top: 0; }
+.pg-row:hover { background: rgba(255, 255, 255, 0.04); }
+.pg-zip {
+    flex: none; width: 28px; height: 18px; line-height: 18px; border-radius: 3px; text-align: center;
+    font-size: 9px; font-weight: bold; color: #fff; background: #2c66bd;
+}
+.pg-name { color: var(--pg-bright); }
+.pg-row-actions { display: flex; gap: 3px; flex: none; }
+
+/* -------------------------------------------------------------- status */
+.pg-status {
+    display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; flex: none; font-size: 11px;
+    color: var(--pg-dim); border-top: 1px solid var(--pg-border); background: var(--color-normal-fill-emphasis, #2c2c2c);
+}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>window.__TEMPLATE__ = "\u003cdiv class=\"pg\">\n    \u003cheader class=\"pg-toolbar\">\n        \u003cspan class=\"pg-logo\">&#x25B6;\u003c/span>\n        \u003cspan class=\"pg-title\">Cocos Playground\u003c/span>\n        \u003cspan class=\"pg-host pg-dim\" :title=\"ui.panel?.serverUrl\">{{ host }}\u003c/span>\n        \u003cdiv class=\"pg-spacer\">\u003c/div>\n        \u003cbutton class=\"pg-icon\" title=\"Check the server and reload the lists\" :disabled=\"busy\" @click=\"refresh()\">&#x21BB;\u003c/button>\n        \u003cbutton :class=\"['pg-icon', { active: ui.view === 'settings' }]\" title=\"Settings\" @click=\"ui.view = ui.view === 'settings' ? 'main' : 'settings'\">&#x2699;\u003c/button>\n    \u003c/header>\n\n    \u003c!-- ============================================================ settings -->\n    \u003cmain v-if=\"ui.view === 'settings'\" class=\"pg-body\">\n        \u003csection class=\"pg-card\">\n            \u003cdiv class=\"pg-card-title\">Server\u003c/div>\n            \u003clabel class=\"pg-label\" for=\"pg-server\">Dashboard URL\u003c/label>\n            \u003cdiv class=\"pg-line\">\n                \u003cinput id=\"pg-server\" class=\"pg-input\" v-model.trim=\"ui.serverInput\" spellcheck=\"false\" placeholder=\"https://playground.example.com\" @keydown.enter=\"saveServer()\">\n                \u003cbutton class=\"pg-btn primary\" :disabled=\"busy || !ui.serverInput\" @click=\"saveServer()\">Save\u003c/button>\n            \u003c/div>\n            \u003cdiv class=\"pg-hint pg-dim\">The root URL of the next-playground dashboard. Each server keeps its own sign-in.\u003c/div>\n            \u003cdiv class=\"pg-line pg-gap\">\n                \u003cbutton class=\"pg-btn\" :disabled=\"busy || ui.panel?.serverUrl === ui.panel?.defaultServerUrl\" @click=\"resetServer()\">Reset to default\u003c/button>\n                \u003cspan class=\"pg-dim pg-ellipsis\" :title=\"ui.panel?.defaultServerUrl\">{{ ui.panel?.defaultServerUrl }}\u003c/span>\n            \u003c/div>\n            \u003cdiv class=\"pg-status-line\">\n                \u003cspan v-if=\"!ui.panel?.server\" class=\"pg-pill\">Checking&#x2026;\u003c/span>\n                \u003cspan v-else-if=\"ui.panel.server.ok\" class=\"pg-pill ok\">Connected\u003c/span>\n                \u003cspan v-else class=\"pg-pill bad\">Unreachable\u003c/span>\n                \u003cspan v-if=\"ui.panel?.server?.ok\" class=\"pg-dim\">{{ ui.panel.server.authEnabled ? 'Google sign-in required' : 'Sign-in is off on this server' }}\u003c/span>\n                \u003cspan v-else-if=\"ui.panel?.server && !ui.panel.server.ok\" class=\"pg-error-text\">{{ ui.panel.server.error }}\u003c/span>\n            \u003c/div>\n        \u003c/section>\n        \u003csection class=\"pg-card\" v-if=\"signedIn\">\n            \u003cdiv class=\"pg-card-title\">Account\u003c/div>\n            \u003cdiv class=\"pg-line\">\n                \u003cspan class=\"pg-avatar\">{{ (ui.panel.account.email || '?').charAt(0).toUpperCase() }}\u003c/span>\n                \u003cdiv class=\"pg-grow\">\n                    \u003cdiv class=\"pg-strong pg-ellipsis\">{{ ui.panel.account.email || 'No sign-in needed' }}\u003c/div>\n                    \u003cdiv class=\"pg-dim\" v-if=\"ui.panel.account.expiresAt\">Sign-in valid until {{ new Date(ui.panel.account.expiresAt).toLocaleDateString() }}\u003c/div>\n                \u003c/div>\n                \u003cbutton v-if=\"ui.panel.account.email\" class=\"pg-btn\" :disabled=\"busy\" @click=\"signOut()\">Sign out\u003c/button>\n            \u003c/div>\n        \u003c/section>\n        \u003cdiv class=\"pg-line pg-gap\">\u003cbutton class=\"pg-btn\" @click=\"ui.view = 'main'\">&#x2039; Back\u003c/button>\u003c/div>\n    \u003c/main>\n\n    \u003c!-- ================================================================ main -->\n    \u003cmain v-else class=\"pg-body\">\n        \u003c!-- server unreachable -->\n        \u003csection v-if=\"ui.panel?.server && !ui.panel.server.ok\" class=\"pg-card bad\">\n            \u003cdiv class=\"pg-card-title\">Can't reach the dashboard\u003c/div>\n            \u003cdiv class=\"pg-error-text pg-wrap\">{{ ui.panel.server.error }}\u003c/div>\n            \u003cdiv class=\"pg-line pg-gap\">\n                \u003cbutton class=\"pg-btn\" @click=\"refresh()\">Try again\u003c/button>\n                \u003cbutton class=\"pg-btn\" @click=\"ui.view = 'settings'\">Change server&#x2026;\u003c/button>\n            \u003c/div>\n        \u003c/section>\n\n        \u003c!-- sign in -->\n        \u003csection v-else-if=\"ui.panel?.server && !signedIn\" class=\"pg-card\">\n            \u003ctemplate v-if=\"ui.panel.signIn\">\n                \u003cdiv class=\"pg-card-title\">Finish signing in in your browser\u003c/div>\n                \u003cdiv class=\"pg-hint pg-dim\">Check that the browser shows this code, then press Allow.\u003c/div>\n                \u003cdiv class=\"pg-code\">{{ ui.panel.signIn.userCode }}\u003c/div>\n                \u003cdiv class=\"pg-line pg-center\">\n                    \u003cspan class=\"pg-spinner\">\u003c/span>\u003cspan class=\"pg-dim\">Waiting for approval&#x2026;\u003c/span>\n                \u003c/div>\n                \u003cdiv class=\"pg-line pg-gap pg-center\">\n                    \u003cbutton class=\"pg-btn\" @click=\"open(ui.panel.signIn.verificationUri)\">Open browser again\u003c/button>\n                    \u003cbutton class=\"pg-btn\" @click=\"cancelSignIn()\">Cancel\u003c/button>\n                \u003c/div>\n            \u003c/template>\n            \u003ctemplate v-else>\n                \u003cdiv class=\"pg-card-title\">Sign in\u003c/div>\n                \u003cdiv class=\"pg-hint pg-dim\">Sign in with your dashboard account to pick the application and concept this project uploads to.\u003c/div>\n                \u003cdiv class=\"pg-line pg-gap\">\n                    \u003cbutton class=\"pg-btn primary big\" @click=\"signIn()\">Sign in with browser\u003c/button>\n                \u003c/div>\n            \u003c/template>\n        \u003c/section>\n\n        \u003c!-- checking -->\n        \u003csection v-else-if=\"!ui.panel?.server\" class=\"pg-card\">\n            \u003cdiv class=\"pg-line\">\u003cspan class=\"pg-spinner\">\u003c/span>\u003cspan class=\"pg-dim\">Connecting to {{ ui.panel?.serverUrl || 'the dashboard' }}&#x2026;\u003c/span>\u003c/div>\n        \u003c/section>\n\n        \u003c!-- target -->\n        \u003csection v-if=\"signedIn\" class=\"pg-card\">\n            \u003cdiv class=\"pg-card-head\">\n                \u003cdiv class=\"pg-card-title\">Upload target\u003c/div>\n                \u003cdiv class=\"pg-spacer\">\u003c/div>\n                \u003cspan class=\"pg-dim pg-ellipsis pg-account\" :title=\"ui.panel.account.email || ''\">{{ ui.panel.account.email || 'sign-in off' }}\u003c/span>\n            \u003c/div>\n            \u003clabel class=\"pg-label\" for=\"pg-app\">Application\u003c/label>\n            \u003cdiv class=\"pg-line\">\n                \u003cimg v-if=\"selectedApp?.iconUrl\" class=\"pg-app-icon\" :src=\"selectedApp.iconUrl\" alt=\"\">\n                \u003cselect id=\"pg-app\" class=\"pg-select\" :disabled=\"busy || ui.loadingApps\" :value=\"ui.panel.selection.applicationId ?? ''\" @change=\"pickApplication($event)\">\n                    \u003coption value=\"\">{{ ui.loadingApps ? 'Loading…' : ui.applications.length ? 'Choose an application' : 'No applications' }}\u003c/option>\n                    \u003coption v-for=\"app in ui.applications\" :key=\"app.id\" :value=\"app.id\">{{ app.name }}\u003c/option>\n                \u003c/select>\n            \u003c/div>\n\n            \u003clabel class=\"pg-label\" for=\"pg-concept\">Concept\u003c/label>\n            \u003cdiv v-if=\"!ui.creating\" class=\"pg-line\">\n                \u003cselect id=\"pg-concept\" class=\"pg-select\" :disabled=\"busy || ui.loadingConcepts || !ui.panel.selection.applicationId\" :value=\"ui.panel.selection.conceptId ?? ''\" @change=\"pickConcept($event)\">\n                    \u003coption value=\"\">{{ !ui.panel.selection.applicationId ? 'Choose an application first' : ui.loadingConcepts ? 'Loading…' : 'Choose a concept' }}\u003c/option>\n                    \u003coption v-for=\"concept in ui.concepts\" :key=\"concept.id\" :value=\"concept.id\">{{ concept.name }}\u003c/option>\n                    \u003coption v-if=\"ui.panel.selection.applicationId && !ui.loadingConcepts\" value=\"__new\">+ New concept…\u003c/option>\n                \u003c/select>\n            \u003c/div>\n            \u003cdiv v-else class=\"pg-line\">\n                \u003cinput class=\"pg-input\" v-model=\"ui.newConceptName\" placeholder=\"New concept name\" spellcheck=\"false\" @keydown.enter=\"createConcept()\" @keydown.esc=\"ui.creating = false\">\n                \u003cbutton class=\"pg-btn primary\" :disabled=\"busy || !ui.newConceptName.trim()\" @click=\"createConcept()\">Create\u003c/button>\n                \u003cbutton class=\"pg-btn\" :disabled=\"busy\" @click=\"ui.creating = false\">Cancel\u003c/button>\n            \u003c/div>\n\n            \u003cdiv class=\"pg-line pg-gap\">\n                \u003cspan v-if=\"selectedConcept\" class=\"pg-dim pg-grow\">Last upload: {{ formatWhen(selectedConcept.buildUploadedAt) }}\u003c/span>\n                \u003cspan v-else class=\"pg-dim pg-grow\">Builds upload to the selected concept.\u003c/span>\n                \u003cbutton class=\"pg-link\" :disabled=\"!ui.panel.selection.applicationId\" @click=\"openDashboard()\">Open in dashboard &#x2197;\u003c/button>\n            \u003c/div>\n        \u003c/section>\n\n        \u003c!-- build -->\n        \u003csection class=\"pg-card\">\n            \u003cdiv class=\"pg-card-title\">Build\u003c/div>\n            \u003cdiv class=\"pg-hint pg-dim\">Repeats the last Web Mobile build, then packages it with the playground manifest.\u003c/div>\n            \u003cdiv class=\"pg-buttons\">\n                \u003cbutton class=\"pg-btn big\" :disabled=\"busy\" @click=\"build(false)\">Build\u003c/button>\n                \u003cbutton class=\"pg-btn primary big\" :disabled=\"!canUpload\" :title=\"canUpload ? 'Build, then upload to ' + selectedConcept.name : 'Sign in and choose a concept first'\" @click=\"build(true)\">Build &amp; Upload\u003c/button>\n            \u003c/div>\n            \u003cdiv v-if=\"ui.panel?.busy\" class=\"pg-busy\">\n                \u003cdiv class=\"pg-line\">\n                    \u003cspan class=\"pg-spinner\">\u003c/span>\n                    \u003cspan class=\"pg-strong\">{{ ui.panel.busy.label }}\u003c/span>\n                    \u003cspan class=\"pg-dim pg-ellipsis pg-grow\">{{ ui.panel.busy.message }}\u003c/span>\n                    \u003cspan v-if=\"ui.panel.busy.progress !== null\" class=\"pg-dim\">{{ Math.round(ui.panel.busy.progress * 100) }}%\u003c/span>\n                \u003c/div>\n                \u003cdiv class=\"pg-progress\">\u003cdiv :class=\"{ indeterminate: ui.panel.busy.progress === null }\" :style=\"ui.panel.busy.progress === null ? {} : { width: ui.panel.busy.progress * 100 + '%' }\">\u003c/div>\u003c/div>\n            \u003c/div>\n        \u003c/section>\n\n        \u003c!-- exports -->\n        \u003csection class=\"pg-card pg-exports\">\n            \u003cdiv class=\"pg-card-head\">\n                \u003cdiv class=\"pg-card-title\">Exported builds\u003c/div>\n                \u003cspan class=\"pg-count\" v-if=\"ui.exports.length\">{{ ui.exports.length }}\u003c/span>\n                \u003cdiv class=\"pg-spacer\">\u003c/div>\n                \u003cbutton class=\"pg-mini\" :disabled=\"busy\" title=\"Zip the current build/web-mobile output without building again\" @click=\"packageExisting()\">Package build/web-mobile\u003c/button>\n            \u003c/div>\n            \u003cdiv v-if=\"!ui.exports.length\" class=\"pg-empty pg-dim\">No exported builds yet. Press Build to make one.\u003c/div>\n            \u003cdiv v-for=\"item in ui.exports\" :key=\"item.file\" class=\"pg-row\" :title=\"item.file\">\n                \u003cspan class=\"pg-zip\">ZIP\u003c/span>\n                \u003cdiv class=\"pg-grow pg-min\">\n                    \u003cdiv class=\"pg-name pg-ellipsis\">{{ item.name }}\u003c/div>\n                    \u003cdiv class=\"pg-dim pg-ellipsis\">{{ formatWhen(item.createdAt) }} &#xB7; {{ formatBytes(item.bytes) }}\u003ctemplate v-if=\"item.fields !== null\"> &#xB7; {{ item.fields }} field{{ item.fields === 1 ? '' : 's' }}\u003c/template>\u003c/div>\n                \u003c/div>\n                \u003cdiv class=\"pg-row-actions\">\n                    \u003cbutton class=\"pg-mini primary\" :disabled=\"!canUpload\" :title=\"canUpload ? 'Upload to ' + selectedConcept.name : 'Sign in and choose a concept first'\" @click=\"upload(item)\">Upload\u003c/button>\n                    \u003cbutton class=\"pg-mini\" title=\"Show in folder\" @click=\"reveal(item)\">Reveal\u003c/button>\n                    \u003cbutton :class=\"['pg-mini', { danger: ui.confirmDelete === item.file }]\" :disabled=\"busy\" :title=\"ui.confirmDelete === item.file ? 'Click again to delete' : 'Delete this zip'\" @click=\"remove(item)\" @blur=\"ui.confirmDelete === item.file && (ui.confirmDelete = '')\">{{ ui.confirmDelete === item.file ? 'Sure?' : 'Delete' }}\u003c/button>\n                \u003c/div>\n            \u003c/div>\n        \u003c/section>\n    \u003c/main>\n\n    \u003cfooter class=\"pg-status\">\n        \u003cspan v-if=\"ui.error\" class=\"pg-error-text pg-ellipsis pg-grow\" :title=\"ui.error\">&#x26A0; {{ ui.error }}\u003c/span>\n        \u003cspan v-else-if=\"ui.notice\" class=\"pg-ok-text pg-ellipsis pg-grow\" :title=\"ui.notice\">&#x2713; {{ ui.notice }}\u003c/span>\n        \u003cspan v-else-if=\"ui.panel?.lastUpload\" class=\"pg-dim pg-ellipsis pg-grow\">Last upload: {{ ui.panel.lastUpload.conceptName }}, {{ formatWhen(ui.panel.lastUpload.at) }}\u003c/span>\n        \u003cspan v-else class=\"pg-grow\">\u003c/span>\n        \u003cbutton v-if=\"ui.panel?.lastUpload\" class=\"pg-link\" @click=\"open(ui.panel.lastUpload.url)\">View upload &#x2197;\u003c/button>\n        \u003cbutton v-if=\"ui.error\" class=\"pg-link\" @click=\"ui.error = ''\">Dismiss\u003c/button>\n    \u003c/footer>\n\u003c/div>\n";</script>
+<script src="harness.js"></script>
+</body>
+</html>

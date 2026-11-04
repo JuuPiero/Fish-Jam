@@ -2,13 +2,14 @@
     "$schema": "./@types/schema/package/index.json",
     "package_version": 2,
     "name": "cocos-playground",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "thanhhh",
     "editor": ">=3.8.6",
     "scripts": {
         "preinstall": "node ./scripts/preinstall.js",
         "build": "node ./scripts/build.js",
-        "watch": "tsc -w"
+        "watch": "tsc -w",
+        "preview": "node ./tests/preview/build.js"
     },
     "description": "i18n:cocos-playground.description",
     "main": "./dist/main.js",
@@ -18,7 +19,21 @@
         "@types/node": "^18.17.1",
         "esbuild": "^0.28.2",
         "jszip": "^3.10.1",
-        "typescript": "^5.8.2"
+        "typescript": "^5.8.2",
+        "vue": "^3.3.4"
+    },
+    "panels": {
+        "default": {
+            "title": "Cocos Playground",
+            "type": "dockable",
+            "main": "dist/panels/default",
+            "size": {
+                "min-width": 340,
+                "min-height": 360,
+                "width": 420,
+                "height": 640
+            }
+        }
     },
     "contributions": {
         "asset-db": {
@@ -30,8 +45,8 @@
         "menu": [
             {
                 "path": "i18n:cocos-playground",
-                "label": "i18n:cocos-playground.show_log",
-                "message": "show-log"
+                "label": "i18n:cocos-playground.open_panel",
+                "message": "open-panel"
             },
             {
                 "path": "i18n:cocos-playground",
@@ -40,16 +55,26 @@
             }
         ],
         "messages": {
-            "show-log": {
-                "methods": [
-                    "showLog"
-                ]
-            },
-            "export-playable": {
-                "methods": [
-                    "exportPlayable"
-                ]
-            }
+            "open-panel": { "methods": ["openPanel"] },
+            "export-playable": { "methods": ["exportPlayable"] },
+            "panel-state": { "methods": ["panelState"] },
+            "panel-refresh": { "methods": ["panelRefresh"] },
+            "set-server-url": { "methods": ["setServerUrl"] },
+            "sign-in": { "methods": ["signIn"] },
+            "cancel-sign-in": { "methods": ["cancelSignIn"] },
+            "sign-out": { "methods": ["signOut"] },
+            "list-applications": { "methods": ["listApplications"] },
+            "list-concepts": { "methods": ["listConcepts"] },
+            "create-concept": { "methods": ["createConcept"] },
+            "select": { "methods": ["select"] },
+            "list-exports": { "methods": ["listExports"] },
+            "delete-export": { "methods": ["deleteExport"] },
+            "build": { "methods": ["build"] },
+            "package-existing": { "methods": ["packageExisting"] },
+            "upload-export": { "methods": ["uploadExport"] },
+            "open-url": { "methods": ["openUrl"] },
+            "reveal": { "methods": ["reveal"] },
+            "cocos-playground:state": { "methods": ["default.onState"] }
         }
     }
 }

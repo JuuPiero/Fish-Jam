@@ -1,0 +1,175 @@
+<div class="pg">
+    <header class="pg-toolbar">
+        <span class="pg-logo">&#x25B6;</span>
+        <span class="pg-title">Cocos Playground</span>
+        <span class="pg-host pg-dim" :title="ui.panel?.serverUrl">{{ host }}</span>
+        <div class="pg-spacer"></div>
+        <button class="pg-icon" title="Check the server and reload the lists" :disabled="busy" @click="refresh()">&#x21BB;</button>
+        <button :class="['pg-icon', { active: ui.view === 'settings' }]" title="Settings" @click="ui.view = ui.view === 'settings' ? 'main' : 'settings'">&#x2699;</button>
+    </header>
+
+    <!-- ============================================================ settings -->
+    <main v-if="ui.view === 'settings'" class="pg-body">
+        <section class="pg-card">
+            <div class="pg-card-title">Server</div>
+            <label class="pg-label" for="pg-server">Dashboard URL</label>
+            <div class="pg-line">
+                <input id="pg-server" class="pg-input" v-model.trim="ui.serverInput" spellcheck="false" placeholder="https://playground.example.com" @keydown.enter="saveServer()">
+                <button class="pg-btn primary" :disabled="busy || !ui.serverInput" @click="saveServer()">Save</button>
+            </div>
+            <div class="pg-hint pg-dim">The root URL of the next-playground dashboard. Each server keeps its own sign-in.</div>
+            <div class="pg-line pg-gap">
+                <button class="pg-btn" :disabled="busy || ui.panel?.serverUrl === ui.panel?.defaultServerUrl" @click="resetServer()">Reset to default</button>
+                <span class="pg-dim pg-ellipsis" :title="ui.panel?.defaultServerUrl">{{ ui.panel?.defaultServerUrl }}</span>
+            </div>
+            <div class="pg-status-line">
+                <span v-if="!ui.panel?.server" class="pg-pill">Checking&#x2026;</span>
+                <span v-else-if="ui.panel.server.ok" class="pg-pill ok">Connected</span>
+                <span v-else class="pg-pill bad">Unreachable</span>
+                <span v-if="ui.panel?.server?.ok" class="pg-dim">{{ ui.panel.server.authEnabled ? 'Google sign-in required' : 'Sign-in is off on this server' }}</span>
+                <span v-else-if="ui.panel?.server && !ui.panel.server.ok" class="pg-error-text">{{ ui.panel.server.error }}</span>
+            </div>
+        </section>
+        <section class="pg-card" v-if="signedIn">
+            <div class="pg-card-title">Account</div>
+            <div class="pg-line">
+                <span class="pg-avatar">{{ (ui.panel.account.email || '?').charAt(0).toUpperCase() }}</span>
+                <div class="pg-grow">
+                    <div class="pg-strong pg-ellipsis">{{ ui.panel.account.email || 'No sign-in needed' }}</div>
+                    <div class="pg-dim" v-if="ui.panel.account.expiresAt">Sign-in valid until {{ new Date(ui.panel.account.expiresAt).toLocaleDateString() }}</div>
+                </div>
+                <button v-if="ui.panel.account.email" class="pg-btn" :disabled="busy" @click="signOut()">Sign out</button>
+            </div>
+        </section>
+        <div class="pg-line pg-gap"><button class="pg-btn" @click="ui.view = 'main'">&#x2039; Back</button></div>
+    </main>
+
+    <!-- ================================================================ main -->
+    <main v-else class="pg-body">
+        <!-- server unreachable -->
+        <section v-if="ui.panel?.server && !ui.panel.server.ok" class="pg-card bad">
+            <div class="pg-card-title">Can't reach the dashboard</div>
+            <div class="pg-error-text pg-wrap">{{ ui.panel.server.error }}</div>
+            <div class="pg-line pg-gap">
+                <button class="pg-btn" @click="refresh()">Try again</button>
+                <button class="pg-btn" @click="ui.view = 'settings'">Change server&#x2026;</button>
+            </div>
+        </section>
+
+        <!-- sign in -->
+        <section v-else-if="ui.panel?.server && !signedIn" class="pg-card">
+            <template v-if="ui.panel.signIn">
+                <div class="pg-card-title">Finish signing in in your browser</div>
+                <div class="pg-hint pg-dim">Check that the browser shows this code, then press Allow.</div>
+                <div class="pg-code">{{ ui.panel.signIn.userCode }}</div>
+                <div class="pg-line pg-center">
+                    <span class="pg-spinner"></span><span class="pg-dim">Waiting for approval&#x2026;</span>
+                </div>
+                <div class="pg-line pg-gap pg-center">
+                    <button class="pg-btn" @click="open(ui.panel.signIn.verificationUri)">Open browser again</button>
+                    <button class="pg-btn" @click="cancelSignIn()">Cancel</button>
+                </div>
+            </template>
+            <template v-else>
+                <div class="pg-card-title">Sign in</div>
+                <div class="pg-hint pg-dim">Sign in with your dashboard account to pick the application and concept this project uploads to.</div>
+                <div class="pg-line pg-gap">
+                    <button class="pg-btn primary big" @click="signIn()">Sign in with browser</button>
+                </div>
+            </template>
+        </section>
+
+        <!-- checking -->
+        <section v-else-if="!ui.panel?.server" class="pg-card">
+            <div class="pg-line"><span class="pg-spinner"></span><span class="pg-dim">Connecting to {{ ui.panel?.serverUrl || 'the dashboard' }}&#x2026;</span></div>
+        </section>
+
+        <!-- target -->
+        <section v-if="signedIn" class="pg-card">
+            <div class="pg-card-head">
+                <div class="pg-card-title">Upload target</div>
+                <div class="pg-spacer"></div>
+                <span class="pg-dim pg-ellipsis pg-account" :title="ui.panel.account.email || ''">{{ ui.panel.account.email || 'sign-in off' }}</span>
+            </div>
+            <label class="pg-label" for="pg-app">Application</label>
+            <div class="pg-line">
+                <img v-if="selectedApp?.iconUrl" class="pg-app-icon" :src="selectedApp.iconUrl" alt="">
+                <select id="pg-app" class="pg-select" :disabled="busy || ui.loadingApps" :value="ui.panel.selection.applicationId ?? ''" @change="pickApplication($event)">
+                    <option value="">{{ ui.loadingApps ? 'Loading…' : ui.applications.length ? 'Choose an application' : 'No applications' }}</option>
+                    <option v-for="app in ui.applications" :key="app.id" :value="app.id">{{ app.name }}</option>
+                </select>
+            </div>
+
+            <label class="pg-label" for="pg-concept">Concept</label>
+            <div v-if="!ui.creating" class="pg-line">
+                <select id="pg-concept" class="pg-select" :disabled="busy || ui.loadingConcepts || !ui.panel.selection.applicationId" :value="ui.panel.selection.conceptId ?? ''" @change="pickConcept($event)">
+                    <option value="">{{ !ui.panel.selection.applicationId ? 'Choose an application first' : ui.loadingConcepts ? 'Loading…' : 'Choose a concept' }}</option>
+                    <option v-for="concept in ui.concepts" :key="concept.id" :value="concept.id">{{ concept.name }}</option>
+                    <option v-if="ui.panel.selection.applicationId && !ui.loadingConcepts" value="__new">+ New concept…</option>
+                </select>
+            </div>
+            <div v-else class="pg-line">
+                <input class="pg-input" v-model="ui.newConceptName" placeholder="New concept name" spellcheck="false" @keydown.enter="createConcept()" @keydown.esc="ui.creating = false">
+                <button class="pg-btn primary" :disabled="busy || !ui.newConceptName.trim()" @click="createConcept()">Create</button>
+                <button class="pg-btn" :disabled="busy" @click="ui.creating = false">Cancel</button>
+            </div>
+
+            <div class="pg-line pg-gap">
+                <span v-if="selectedConcept" class="pg-dim pg-grow">Last upload: {{ formatWhen(selectedConcept.buildUploadedAt) }}</span>
+                <span v-else class="pg-dim pg-grow">Builds upload to the selected concept.</span>
+                <button class="pg-link" :disabled="!ui.panel.selection.applicationId" @click="openDashboard()">Open in dashboard &#x2197;</button>
+            </div>
+        </section>
+
+        <!-- build -->
+        <section class="pg-card">
+            <div class="pg-card-title">Build</div>
+            <div class="pg-hint pg-dim">Repeats the last Web Mobile build, then packages it with the playground manifest.</div>
+            <div class="pg-buttons">
+                <button class="pg-btn big" :disabled="busy" @click="build(false)">Build</button>
+                <button class="pg-btn primary big" :disabled="!canUpload" :title="canUpload ? 'Build, then upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="build(true)">Build &amp; Upload</button>
+            </div>
+            <div v-if="ui.panel?.busy" class="pg-busy">
+                <div class="pg-line">
+                    <span class="pg-spinner"></span>
+                    <span class="pg-strong">{{ ui.panel.busy.label }}</span>
+                    <span class="pg-dim pg-ellipsis pg-grow">{{ ui.panel.busy.message }}</span>
+                    <span v-if="ui.panel.busy.progress !== null" class="pg-dim">{{ Math.round(ui.panel.busy.progress * 100) }}%</span>
+                </div>
+                <div class="pg-progress"><div :class="{ indeterminate: ui.panel.busy.progress === null }" :style="ui.panel.busy.progress === null ? {} : { width: ui.panel.busy.progress * 100 + '%' }"></div></div>
+            </div>
+        </section>
+
+        <!-- exports -->
+        <section class="pg-card pg-exports">
+            <div class="pg-card-head">
+                <div class="pg-card-title">Exported builds</div>
+                <span class="pg-count" v-if="ui.exports.length">{{ ui.exports.length }}</span>
+                <div class="pg-spacer"></div>
+                <button class="pg-mini" :disabled="busy" title="Zip the current build/web-mobile output without building again" @click="packageExisting()">Package build/web-mobile</button>
+            </div>
+            <div v-if="!ui.exports.length" class="pg-empty pg-dim">No exported builds yet. Press Build to make one.</div>
+            <div v-for="item in ui.exports" :key="item.file" class="pg-row" :title="item.file">
+                <span class="pg-zip">ZIP</span>
+                <div class="pg-grow pg-min">
+                    <div class="pg-name pg-ellipsis">{{ item.name }}</div>
+                    <div class="pg-dim pg-ellipsis">{{ formatWhen(item.createdAt) }} &#xB7; {{ formatBytes(item.bytes) }}<template v-if="item.fields !== null"> &#xB7; {{ item.fields }} field{{ item.fields === 1 ? '' : 's' }}</template></div>
+                </div>
+                <div class="pg-row-actions">
+                    <button class="pg-mini primary" :disabled="!canUpload" :title="canUpload ? 'Upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="upload(item)">Upload</button>
+                    <button class="pg-mini" title="Show in folder" @click="reveal(item)">Reveal</button>
+                    <button :class="['pg-mini', { danger: ui.confirmDelete === item.file }]" :disabled="busy" :title="ui.confirmDelete === item.file ? 'Click again to delete' : 'Delete this zip'" @click="remove(item)" @blur="ui.confirmDelete === item.file && (ui.confirmDelete = '')">{{ ui.confirmDelete === item.file ? 'Sure?' : 'Delete' }}</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="pg-status">
+        <span v-if="ui.error" class="pg-error-text pg-ellipsis pg-grow" :title="ui.error">&#x26A0; {{ ui.error }}</span>
+        <span v-else-if="ui.notice" class="pg-ok-text pg-ellipsis pg-grow" :title="ui.notice">&#x2713; {{ ui.notice }}</span>
+        <span v-else-if="ui.panel?.lastUpload" class="pg-dim pg-ellipsis pg-grow">Last upload: {{ ui.panel.lastUpload.conceptName }}, {{ formatWhen(ui.panel.lastUpload.at) }}</span>
+        <span v-else class="pg-grow"></span>
+        <button v-if="ui.panel?.lastUpload" class="pg-link" @click="open(ui.panel.lastUpload.url)">View upload &#x2197;</button>
+        <button v-if="ui.error" class="pg-link" @click="ui.error = ''">Dismiss</button>
+    </footer>
+</div>
