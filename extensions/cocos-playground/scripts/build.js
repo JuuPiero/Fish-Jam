@@ -12,6 +12,8 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const dist = path.join(root, 'dist');
 const watch = process.argv.includes('--watch');
+// For the download zip (scripts/pack.js): no source maps (they triple the size).
+const release = process.argv.includes('--release');
 
 // Type-check first — esbuild only transpiles, it doesn't type-check, so this is the only place
 // type errors would otherwise get caught.
@@ -28,7 +30,7 @@ const options = {
     platform: 'node',
     format: 'cjs',
     target: 'node16',
-    sourcemap: 'inline',
+    sourcemap: release ? false : 'inline',
     external: ['electron'],
     // Vue's CommonJS build includes the template compiler (the panel template is compiled at
     // runtime from static/template/vue/app.html).

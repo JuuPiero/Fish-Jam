@@ -121,10 +121,67 @@
             </div>
         </section>
 
+        <!-- playables of the concept -->
+        <section v-if="signedIn && selectedConcept" class="pg-card">
+            <div class="pg-card-head">
+                <button class="pg-fold" :title="ui.playablesOpen ? 'Hide' : 'Show'" @click="ui.playablesOpen = !ui.playablesOpen">{{ ui.playablesOpen ? '▾' : '▸' }}</button>
+                <div class="pg-card-title">Playables</div>
+                <span class="pg-count">{{ ui.playables.length }}</span>
+                <div class="pg-spacer"></div>
+                <input v-if="ui.playablesOpen && ui.playables.length > 6" class="pg-input pg-filter" v-model="ui.playableFilter" placeholder="Filter" spellcheck="false">
+                <button class="pg-icon small" title="Reload the playables" :disabled="ui.loadingPlayables" @click="refreshPlayables()">&#x21BB;</button>
+            </div>
+            <template v-if="ui.playablesOpen">
+                <div v-if="ui.loadingPlayables && !ui.playables.length" class="pg-empty pg-dim">Loading&#x2026;</div>
+                <div v-else-if="!ui.playables.length" class="pg-empty pg-dim">No playables in {{ selectedConcept.name }} yet. Make them on the dashboard after the first upload.</div>
+                <div v-else class="pg-playables">
+                    <div v-for="playable in shownPlayables" :key="playable.id" class="pg-row">
+                        <div class="pg-grow pg-min">
+                            <div class="pg-name pg-ellipsis" :title="playable.name">{{ playable.name }}</div>
+                            <div class="pg-dim pg-ellipsis">{{ formatWhen(playable.updatedAt) }} &#xB7; {{ playable.values }} value{{ playable.values === 1 ? '' : 's' }}<template v-if="playable.fileValues"> ({{ playable.fileValues }} file{{ playable.fileValues === 1 ? '' : 's' }})</template></div>
+                        </div>
+                        <div class="pg-row-actions">
+                            <button class="pg-mini primary" title="Run this project in the editor's browser preview with the playable's values" @click="previewPlayable(playable)">Preview</button>
+                            <button class="pg-mini" title="Copy its values as JSON" @click="copyValues(playable)">Copy</button>
+                            <button class="pg-mini" title="Open it on the dashboard" @click="editPlayable(playable)">Edit &#x2197;</button>
+                        </div>
+                    </div>
+                    <div v-if="!shownPlayables.length" class="pg-empty pg-dim">Nothing matches "{{ ui.playableFilter }}".</div>
+                </div>
+            </template>
+        </section>
+
         <!-- build -->
         <section class="pg-card">
-            <div class="pg-card-title">Build</div>
-            <div class="pg-hint pg-dim">Repeats the last Web Mobile build, then packages it with the playground manifest.</div>
+            <div class="pg-card-head">
+                <div class="pg-card-title">Build</div>
+                <div class="pg-spacer"></div>
+                <button class="pg-mini" :disabled="busy" title="Scan scripts, the launch scene and prefabs for problems, without building" @click="checkProject()">Check project</button>
+            </div>
+            <div class="pg-hint pg-dim">Checks the project, repeats the last Web Mobile build, then packages it with the playground manifest.</div>
+
+            <div v-if="ui.check" :class="['pg-check', checkErrors ? 'bad' : 'warn']">
+                <div class="pg-line">
+                    <span class="pg-strong pg-grow">
+                        <template v-if="ui.check.stopped.kind === 'check'">Project check: </template>
+                        <template v-else>{{ ui.check.stopped.kind === 'package' ? 'Packaging' : 'Build' }} stopped: </template>
+                        {{ checkErrors ? checkErrors + ' error' + (checkErrors === 1 ? '' : 's') : '' }}{{ checkErrors && ui.check.report.issues.length > checkErrors ? ', ' : '' }}{{ ui.check.report.issues.length > checkErrors ? (ui.check.report.issues.length - checkErrors) + ' warning' + (ui.check.report.issues.length - checkErrors === 1 ? '' : 's') : '' }}
+                    </span>
+                    <span class="pg-dim">{{ ui.check.report.fields }} field{{ ui.check.report.fields === 1 ? '' : 's' }}</span>
+                </div>
+                <ul class="pg-issues">
+                    <li v-for="(issue, i) in ui.check.report.issues" :key="i" :class="issue.level"><span class="pg-issue-level">{{ issue.level === 'error' ? 'ERROR' : 'WARN' }}</span><span class="pg-wrap">{{ issue.message }}</span></li>
+                </ul>
+                <div class="pg-line pg-gap-s">
+                    <template v-if="ui.check.stopped.kind !== 'check'">
+                        <button class="pg-btn" :disabled="busy" @click="goOnAnyway()">{{ ui.check.stopped.kind === 'package' ? 'Package anyway' : ui.check.stopped.upload ? 'Build & Upload anyway' : 'Build anyway' }}</button>
+                        <button class="pg-btn" @click="ui.check = null">Cancel</button>
+                    </template>
+                    <button v-else class="pg-btn" @click="ui.check = null">Close</button>
+                    <span class="pg-dim pg-grow pg-wrap">These issues won't stop another build this session once you go on.</span>
+                </div>
+            </div>
+
             <div class="pg-buttons">
                 <button class="pg-btn big" :disabled="busy" @click="build(false)">Build</button>
                 <button class="pg-btn primary big" :disabled="!canUpload" :title="canUpload ? 'Build, then upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="build(true)">Build &amp; Upload</button>
@@ -149,20 +206,87 @@
                 <button class="pg-mini" :disabled="busy" title="Zip the current build/web-mobile output without building again" @click="packageExisting()">Package build/web-mobile</button>
             </div>
             <div v-if="!ui.exports.length" class="pg-empty pg-dim">No exported builds yet. Press Build to make one.</div>
-            <div v-for="item in ui.exports" :key="item.file" class="pg-row" :title="item.file">
-                <span class="pg-zip">ZIP</span>
-                <div class="pg-grow pg-min">
-                    <div class="pg-name pg-ellipsis">{{ item.name }}</div>
-                    <div class="pg-dim pg-ellipsis">{{ formatWhen(item.createdAt) }} &#xB7; {{ formatBytes(item.bytes) }}<template v-if="item.fields !== null"> &#xB7; {{ item.fields }} field{{ item.fields === 1 ? '' : 's' }}</template></div>
+            <div v-for="item in ui.exports" :key="item.file" class="pg-export">
+                <div class="pg-row" :title="item.file">
+                    <span class="pg-zip">ZIP</span>
+                    <div class="pg-grow pg-min">
+                        <div class="pg-line">
+                            <span class="pg-name pg-ellipsis">{{ item.name }}</span>
+                            <span v-if="item.issues && item.issues.length" :class="['pg-badge', item.issues.some(i => i.level === 'error') ? 'bad' : 'warn']" :title="item.issues.map(i => (i.level === 'error' ? 'ERROR: ' : 'WARN: ') + i.message).join('\n')">&#x26A0; {{ item.issues.length }}</span>
+                        </div>
+                        <div class="pg-dim pg-ellipsis">{{ formatWhen(item.createdAt) }} &#xB7; {{ formatBytes(item.bytes) }}<template v-if="item.fields !== null"> &#xB7; {{ item.fields }} field{{ item.fields === 1 ? '' : 's' }}</template></div>
+                        <div v-for="summary in [estimateSummary(item.estimates.pnp), estimateSummary(item.estimates['super-html'])].filter(Boolean)" :key="summary.text" :class="['pg-size-line', summary.ok ? 'ok' : 'bad']">{{ summary.ok ? '✓' : '✕' }} {{ summary.text }}</div>
+                    </div>
+                    <div class="pg-row-actions">
+                        <button class="pg-mini primary" :disabled="!canUpload" :title="canUpload ? 'Upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="upload(item)">Upload</button>
+                        <button :class="['pg-mini', { active: ui.sizesOpen === item.file }]" title="Network sizes: the dashboard packs it for every ad network" @click="toggleSizes(item)">Sizes</button>
+                        <button class="pg-mini pg-glyph" title="Show in folder" @click="reveal(item)">&#x1F4C2;</button>
+                        <button :class="['pg-mini', ui.confirmDelete === item.file ? 'danger' : 'pg-glyph']" :disabled="busy" :title="ui.confirmDelete === item.file ? 'Click again to delete' : 'Delete this zip'" @click="remove(item)" @blur="ui.confirmDelete === item.file && (ui.confirmDelete = '')">{{ ui.confirmDelete === item.file ? 'Sure?' : '✕' }}</button>
+                    </div>
                 </div>
-                <div class="pg-row-actions">
-                    <button class="pg-mini primary" :disabled="!canUpload" :title="canUpload ? 'Upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="upload(item)">Upload</button>
-                    <button class="pg-mini" title="Show in folder" @click="reveal(item)">Reveal</button>
-                    <button :class="['pg-mini', { danger: ui.confirmDelete === item.file }]" :disabled="busy" :title="ui.confirmDelete === item.file ? 'Click again to delete' : 'Delete this zip'" @click="remove(item)" @blur="ui.confirmDelete === item.file && (ui.confirmDelete = '')">{{ ui.confirmDelete === item.file ? 'Sure?' : 'Delete' }}</button>
+                <div v-if="ui.sizesOpen === item.file" class="pg-sizes">
+                    <div class="pg-line">
+                        <div class="pg-seg">
+                            <button v-for="b in ['pnp', 'super-html']" :key="b" :class="{ active: ui.sizesBuilder === b }" @click="ui.sizesBuilder = b">{{ b }}</button>
+                        </div>
+                        <template v-if="canEstimate && !ui.channelsError && channelsFor(ui.sizesBuilder).length">
+                            <select class="pg-select pg-network" :value="chosenNetwork(ui.sizesBuilder)" title="The ad network to estimate (one at a time)" @change="chooseNetwork($event)">
+                                <option value="" disabled>Ad network&#x2026;</option>
+                                <option v-for="option in channelsFor(ui.sizesBuilder)" :key="option.channel" :value="option.channel">{{ option.label }}{{ option.maxBytes ? ' (≤ ' + formatBytes(option.maxBytes) + ')' : '' }}{{ resultOf(item, option.channel) ? (resultOf(item, option.channel).withinLimit ? '  ✓' : '  ✕') : '' }}</option>
+                            </select>
+                            <button class="pg-mini primary" :disabled="busy || !chosenNetwork(ui.sizesBuilder)" @click="estimate(item)">{{ resultOf(item, chosenNetwork(ui.sizesBuilder)) ? 'Estimate again' : 'Estimate' }}</button>
+                        </template>
+                    </div>
+                    <div v-if="!canEstimate" class="pg-empty pg-dim">{{ signedIn ? 'This server is too old to estimate sizes: it needs a newer next-playground.' : 'Sign in to estimate network sizes.' }}</div>
+                    <div v-else-if="ui.channelsError" class="pg-empty pg-error-text">{{ ui.channelsError }}</div>
+                    <div v-else-if="!channelsFor(ui.sizesBuilder).length" class="pg-empty pg-dim">Loading the networks&#x2026;</div>
+                    <table v-else-if="resultsOf(item).length" class="pg-table">
+                        <tr v-for="c in resultsOf(item)" :key="c.channel" :class="{ over: !c.withinLimit, chosen: c.channel === chosenNetwork(ui.sizesBuilder) }" :title="c.format + ', estimated ' + formatWhen(c.at)">
+                            <td class="pg-ellipsis">{{ c.label }}</td>
+                            <td class="pg-dim">{{ c.format }}</td>
+                            <td class="pg-num">{{ formatBytes(c.bytes) }}</td>
+                            <td class="pg-num pg-dim">{{ c.maxBytes ? '/ ' + formatBytes(c.maxBytes) : 'no cap' }}</td>
+                            <td class="pg-mark">{{ c.withinLimit ? '✓' : '✕' }}</td>
+                        </tr>
+                    </table>
+                    <div v-else class="pg-empty pg-dim">No {{ ui.sizesBuilder }} network estimated yet. Choose one and press Estimate: the dashboard packs the zip for that network.</div>
                 </div>
             </div>
         </section>
     </main>
+
+    <!-- an upload that would drop / change fields: confirm first -->
+    <div v-if="ui.plan" class="pg-overlay" @keydown.esc="ui.plan = null">
+        <section class="pg-dialog" role="dialog" aria-label="Confirm the upload">
+            <div class="pg-card-title">Replace the build of {{ ui.plan.plan.conceptName }}?</div>
+            <div class="pg-hint pg-dim">
+                {{ ui.plan.plan.kept }} field{{ ui.plan.plan.kept === 1 ? '' : 's' }} stay the same<template v-if="ui.plan.plan.added">, {{ ui.plan.plan.added }} new</template>.
+                The concept has {{ ui.plan.plan.playables }} playable{{ ui.plan.plan.playables === 1 ? '' : 's' }}; values saved for the fields below stop working or may not fit any more.
+            </div>
+            <div class="pg-dialog-body">
+                <template v-if="ui.plan.plan.removed.length">
+                    <div class="pg-section-title bad">Removed ({{ ui.plan.plan.removed.length }})</div>
+                    <div v-for="f in ui.plan.plan.removed" :key="'r' + f.key" class="pg-change">
+                        <div class="pg-line"><span class="pg-strong pg-ellipsis">{{ f.label }}</span><span class="pg-dim pg-ellipsis pg-grow" :title="f.key">{{ f.where }}</span></div>
+                        <div :class="f.playables.length ? 'pg-error-text' : 'pg-dim'" class="pg-wrap">{{ f.playables.length ? 'Used by ' + f.playables.join(', ') : 'No playable has a value for it' }}</div>
+                    </div>
+                </template>
+                <template v-if="ui.plan.plan.changed.length">
+                    <div class="pg-section-title warn">Changed ({{ ui.plan.plan.changed.length }})</div>
+                    <div v-for="f in ui.plan.plan.changed" :key="'c' + f.key" class="pg-change">
+                        <div class="pg-line"><span class="pg-strong pg-ellipsis">{{ f.label }}</span><span class="pg-dim pg-ellipsis pg-grow" :title="f.key">{{ f.where }}</span></div>
+                        <div class="pg-warn-text pg-wrap">{{ f.change }}</div>
+                        <div :class="f.playables.length ? 'pg-error-text' : 'pg-dim'" class="pg-wrap">{{ f.playables.length ? 'Used by ' + f.playables.join(', ') : 'No playable has a value for it' }}</div>
+                    </div>
+                </template>
+            </div>
+            <div class="pg-line pg-gap">
+                <div class="pg-spacer"></div>
+                <button class="pg-btn" @click="ui.plan = null">Cancel</button>
+                <button class="pg-btn danger" :disabled="busy" @click="uploadAnyway()">Upload anyway</button>
+            </div>
+        </section>
+    </div>
 
     <footer class="pg-status">
         <span v-if="ui.error" class="pg-error-text pg-ellipsis pg-grow" :title="ui.error">&#x26A0; {{ ui.error }}</span>

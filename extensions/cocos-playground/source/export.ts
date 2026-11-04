@@ -73,6 +73,8 @@ export function buildManifest(assetsDir: string, webMobileDir: string): Playable
 export async function exportPlayablePackage(
     projectRoot: string = findProjectRoot(),
     webMobileDir: string = path.join(projectRoot, 'build', 'web-mobile'),
+    /** Already scanned (the panel's project check): saves scanning twice. */
+    scanned?: PlayableManifest,
 ): Promise<string> {
     const assetsDir = path.join(projectRoot, 'assets');
     const indexHtmlPath = path.join(webMobileDir, 'index.html');
@@ -83,7 +85,7 @@ export async function exportPlayablePackage(
         );
     }
 
-    const manifest = buildManifest(assetsDir, webMobileDir);
+    const manifest = scanned ?? buildManifest(assetsDir, webMobileDir);
 
     const zip = new JSZip();
     addDirToZip(zip, webMobileDir, 'web-mobile');

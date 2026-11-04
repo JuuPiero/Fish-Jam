@@ -21,8 +21,16 @@ Phần runtime (`runtime/assets/`) được mount vào project ở `db://cocos-p
 
 ## 1. Cài đặt
 
-- Chép thư mục `cocos-playground` vào `extensions/` của project, rồi bật trong **Extension Manager**.
+- **Cách nhanh nhất:** tải zip ở dashboard, mục **Settings → Cocos Creator extension download**.
+  Giải nén vào `extensions/` của project (zip đã có sẵn thư mục `cocos-playground/`), rồi bật trong
+  **Extension Manager**.
+- Hoặc chép thư mục `cocos-playground` vào `extensions/` của project, rồi bật trong **Extension
+  Manager**.
 - Không cần `npm install`: `dist/main.js` đã được bundle sẵn, chép thư mục là chạy.
+- **Phát hành bản mới cho team:** chạy `npm run pack`, được file
+  `build/cocos-playground-<version>.zip` (bản build không có source map, chỉ gồm những file Cocos
+  cần). Admin upload file này ở Settings của dashboard. File nằm trên ổ đĩa server, không lên R2.
+  Bản mới thay bản cũ.
 - Khi sửa `source/`, chạy `npm install` một lần, rồi `npm run build` sau mỗi lần sửa (bước này gồm
   `tsc --noEmit` và bundle bằng esbuild).
 
@@ -297,6 +305,33 @@ Mở bằng menu **Cocos Playground → Open panel**.
 
    **Package build/web-mobile** đóng gói bản build hiện có mà không build lại, giống lệnh Export
    playable.
+6. **Kiểm tra project:** Build và Package luôn kiểm tra project trước. Có lỗi hoặc cảnh báo thì panel
+   dừng lại và hiện danh sách; bấm **Build anyway** để tiếp tục.
+   - Lỗi gồm: decorator sai, kiểu không hỗ trợ, trùng tên `@ccclass`, scene nén. Đây là các trường
+     hợp field sẽ không lên dashboard.
+   - Cảnh báo gồm: không có field nào, nhiều node trùng key, bản build cũ hơn code/scene (khi
+     Package).
+   - Cùng một danh sách đã bấm Build anyway thì không hỏi lại trong phiên làm việc đó.
+   - Nút **Check project** chạy riêng bước kiểm tra, không build.
+   - Kết quả kiểm tra lưu cạnh zip (`<zip>.meta.json`) và hiện thành huy hiệu ⚠ trên dòng zip.
+7. **Cảnh báo trước khi upload đè:** nếu concept đã có build mà bản mới **mất field** hoặc **đổi kiểu
+   field** (kiểu giá trị, list/đơn, bớt option enum), panel hiện danh sách các field đó. Mỗi field ghi
+   rõ playable nào đang có giá trị cho nó. Bấm **Upload anyway** để upload, hoặc Cancel; zip vẫn được
+   giữ.
+8. **Sizes (dung lượng theo network):** chọn pnp hoặc super-html, chọn **một** mạng quảng cáo trong
+   dropdown, rồi bấm **Estimate**.
+   - Mỗi lần chỉ đo một mạng: đó là một lần đóng gói thật trên server.
+   - Dashboard trả về kích thước file của mạng đó so với giới hạn của nó (Facebook 2 MB, phần lớn
+     các mạng khác 5 MB). Server không lưu gì.
+   - Kết quả lưu cạnh zip. Bảng bên dưới gộp mọi mạng đã đo; đo lại một mạng thì thay kết quả cũ của
+     mạng đó.
+   - Panel nhớ mạng bạn chọn gần nhất.
+9. **Playables:** liệt kê các playable của concept đang chọn. Mỗi playable có các nút:
+   - **Preview:** chạy project trong browser preview của Cocos với giá trị đã lưu của playable (qua
+     `?pgvo=`). Field file đã upload lên dashboard thì vẫn dùng asset gốc của scene. Ảnh/âm thanh
+     thay thế (tab Images/Audio) không áp dụng ở đây.
+   - **Copy:** chép giá trị dạng JSON.
+   - **Edit ↗:** mở playable trên dashboard.
 
 **Extension đọc những gì:**
 
@@ -396,7 +431,8 @@ runtime/assets/PlayGroundField.ts   decorator và phần áp giá trị (chạy 
 runtime/assets/OpenStore.ts         openStore() / gameEnd()
 source/main.ts                      các lệnh menu + message cho panel
 source/export.ts                    Export playable: quét, tạo manifest, zip build
-source/connect/                     panel ↔ dashboard: config, API, đăng nhập, build task, upload
+source/connect/                     panel ↔ dashboard: config, API, đăng nhập, build task, upload,
+                                    check.ts (kiểm tra project), diff.ts (so sánh field khi upload đè)
 source/panels/default/              panel (Vue 3; template static/template/vue/app.html)
 tests/preview/                      chạy panel trên trình duyệt với bridge giả (npm run preview)
 source/analysis/scanDecorators.ts   đọc @ccclass / @playGroundField / enum từ source TS

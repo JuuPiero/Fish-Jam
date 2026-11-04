@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as https from 'https';
 import * as path from 'path';
+import type { DiffField } from './diff';
 
 /*
  * The dashboard's API, as the extension uses it (next-playground: lib/server/api-tokens.ts for
@@ -17,6 +18,8 @@ export class ApiError extends Error {
 export interface ServerInfo {
     name: string;
     apiVersion: number;
+    /** apiVersion 2+: what this server offers (`estimate`). */
+    features?: string[];
     authEnabled: boolean;
 }
 
@@ -42,6 +45,21 @@ export interface Concept {
     name: string;
     build_original_filename: string | null;
     build_uploaded_at: string | null;
+    /** In `GET /concepts/:id` (and the listing): the current build's fields. */
+    manifest?: { version?: number; fields?: DiffField[] } | null;
+}
+
+export interface Playable {
+    id: number;
+    concept_id: number;
+    name: string;
+    field_values: Record<string, unknown> | null;
+    updated_at: string;
+}
+
+export interface EstimateResponse {
+    builder: string;
+    channels: { channel: string; label: string; format: 'html' | 'zip'; bytes: number; max_bytes: number | null; within_limit: boolean }[];
 }
 
 async function call<T>(server: string, route: string, init: { method?: string; token?: string | null; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
@@ -82,6 +100,8 @@ export const api = {
     concepts: (server: string, token: string | null, applicationId: number) => call<Concept[]>(server, `/applications/${applicationId}/concepts`, { token }),
     createConcept: (server: string, token: string | null, applicationId: number, name: string) =>
         call<Concept>(server, `/applications/${applicationId}/concepts`, { method: 'POST', token, body: { name } }),
+    concept: (server: string, token: string | null, conceptId: number) => call<Concept>(server, `/concepts/${conceptId}`, { token, timeoutMs: 60_000 }),
+    playables: (server: string, token: string | null, conceptId: number) => call<Playable[]>(server, `/concepts/${conceptId}/playables`, { token, timeoutMs: 60_000 }),
 };
 
 /**
@@ -89,7 +109,24 @@ export const api = {
  * streamed from disk so `onProgress` (0–1) can follow it.
  */
 export function uploadBuild(server: string, token: string | null, conceptId: number, file: string, onProgress: (fraction: number) => void): Promise<Concept> {
-    const url = new URL(`${server}/api/concepts/${conceptId}/build`);
+    return postFile<Concept>(`${server}/api/concepts/${conceptId}/build`, server, token, file, onProgress);
+}
+
+/**
+ * One network's size for a package (`POST /api/extension/estimate?builder=&channel=`): the server
+ * packs it for that network; `onProgress` follows the upload, then the server works (seconds).
+ */
+export function estimateSize(server: string, token: string | null, builder: string, channel: string, file: string, onProgress: (fraction: number) => void): Promise<EstimateResponse> {
+    const query = new URLSearchParams({ builder, channel });
+    return postFile<EstimateResponse>(`${server}/api/extension/estimate?${query}`, server, token, file, onProgress);
+}
+
+/** The networks each builder packs for (`GET /api/extension/estimate`). */
+export const channelOptions = (server: string, token: string | null) =>
+    call<Record<string, { channel: string; label: string; max_bytes: number | null }[]>>(server, '/extension/estimate', { token });
+
+function postFile<T>(target: string, server: string, token: string | null, file: string, onProgress: (fraction: number) => void): Promise<T> {
+    const url = new URL(target);
     const boundary = `----cocos-playground-${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
     const head = Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${path.basename(file).replace(/"/g, '')}"\r\nContent-Type: application/zip\r\n\r\n`,
@@ -127,7 +164,7 @@ export function uploadBuild(server: string, token: string | null, conceptId: num
                         reject(new ApiError(response.statusCode ?? 0, body?.message ?? `upload failed: ${response.statusCode}`));
                     } else {
                         onProgress(1);
-                        resolve(body as Concept);
+                        resolve(body as T);
                     }
                 });
             },

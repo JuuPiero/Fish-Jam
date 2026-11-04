@@ -1,10 +1,11 @@
 /**
  * Vue app of the Cocos Playground panel: sign in to the dashboard, pick the application and concept
- * this project uploads to, build / package / upload. Free of Node / Editor APIs (those come through
- * the PlaygroundBridge), so it also runs in a plain browser preview.
+ * this project uploads to, check / build / package / upload, network sizes, and the concept's
+ * playables. Free of Node / Editor APIs (those come through the PlaygroundBridge), so it also runs in
+ * a plain browser preview.
  */
 import { computed, createApp, defineComponent, reactive } from 'vue';
-import type { ApplicationItem, ConceptItem, ExportItem, PanelState } from '../../shared';
+import type { ApplicationItem, Builder, BuildResult, ChannelOption, CheckReport, ConceptItem, ExportItem, PanelState, PlayableItem, SizeEstimate, UploadPlan } from '../../shared';
 import type { PlaygroundBridge } from './bridge';
 
 export interface PlaygroundApp {
@@ -27,6 +28,40 @@ export function formatWhen(iso: string | null): string {
     return date.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+const fileName = (file: string | null) => (file ? (file.split(/[\\/]/).pop() ?? file) : '');
+
+/** One line for the networks estimated so far: "pnp: 3 networks within limits" / "pnp: 1 of 3 over the limit (Facebook)". */
+export function estimateSummary(estimate: SizeEstimate | undefined): { text: string; ok: boolean } | null {
+    if (!estimate || estimate.channels.length === 0) return null;
+    const count = estimate.channels.length;
+    const over = estimate.channels.filter((channel) => !channel.withinLimit);
+    if (over.length === 0) return { text: `${estimate.builder}: ${count === 1 ? estimate.channels[0].label + ' is' : count + ' networks'} within limits`, ok: true };
+    return { text: `${estimate.builder}: ${over.length} of ${count} over the limit (${over.map((channel) => channel.label).join(', ')})`, ok: false };
+}
+
+const NETWORK_KEY = 'cocos-playground.sizes-network';
+
+/** The network last chosen per builder (a per-viewer convenience: missing storage just means none). */
+function loadNetworks(): Record<Builder, string> {
+    try {
+        const saved = JSON.parse(localStorage.getItem(NETWORK_KEY) ?? 'null');
+        if (saved && typeof saved.pnp === 'string' && typeof saved['super-html'] === 'string') return saved;
+    } catch {
+        // no storage
+    }
+    return { pnp: '', 'super-html': '' };
+}
+
+function saveNetworks(networks: Record<Builder, string>): void {
+    try {
+        localStorage.setItem(NETWORK_KEY, JSON.stringify(networks));
+    } catch {
+        // no storage
+    }
+}
+
+type Stopped = { kind: 'build'; upload: boolean } | { kind: 'package' } | { kind: 'check' };
+
 export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, template: string): PlaygroundApp {
     const ui = reactive({
         panel: null as PanelState | null,
@@ -35,11 +70,26 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
         applications: [] as ApplicationItem[],
         concepts: [] as ConceptItem[],
         exports: [] as ExportItem[],
+        playables: [] as PlayableItem[],
+        playablesOpen: true,
+        playableFilter: '',
         loadingApps: false,
         loadingConcepts: false,
+        loadingPlayables: false,
         creating: false,
         newConceptName: '',
         confirmDelete: '' as string,
+        /** The project check on show, and what it stopped (if anything). */
+        check: null as { report: CheckReport; stopped: Stopped } | null,
+        /** An upload waiting for confirmation: what it would change. */
+        plan: null as { plan: UploadPlan; file: string } | null,
+        /** The export row whose network sizes are open, and the builder shown there. */
+        sizesOpen: '' as string,
+        sizesBuilder: 'pnp' as Builder,
+        /** Networks per builder (from the server), and the one chosen per builder (one estimate = one network). */
+        channelOptions: null as Record<Builder, ChannelOption[]> | null,
+        channelsError: '',
+        network: loadNetworks(),
         error: '',
         notice: '',
         working: false,
@@ -47,11 +97,17 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
 
     const signedIn = computed(() => !!ui.panel?.account);
     const authOff = computed(() => ui.panel?.server?.ok === true && !ui.panel.server.authEnabled);
+    const canEstimate = computed(() => signedIn.value && ui.panel?.server?.ok === true && ui.panel.server.features.includes('estimate'));
     const selectedApp = computed(() => ui.applications.find((app) => app.id === ui.panel?.selection.applicationId) ?? null);
     const selectedConcept = computed(() => ui.concepts.find((concept) => concept.id === ui.panel?.selection.conceptId) ?? null);
     const busy = computed(() => !!ui.panel?.busy || ui.working);
     const canUpload = computed(() => signedIn.value && !!selectedConcept.value && !busy.value);
     const host = computed(() => ui.panel?.serverUrl.replace(/^https?:\/\//, '') ?? '');
+    const shownPlayables = computed(() => {
+        const filter = ui.playableFilter.trim().toLowerCase();
+        return filter ? ui.playables.filter((playable) => playable.name.toLowerCase().includes(filter)) : ui.playables;
+    });
+    const checkErrors = computed(() => ui.check?.report.issues.filter((issue) => issue.level === 'error').length ?? 0);
 
     function fail(error: unknown) {
         ui.error = error instanceof Error ? error.message : String(error);
@@ -67,6 +123,7 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
         if (!state.account) {
             ui.applications = [];
             ui.concepts = [];
+            ui.playables = [];
         }
     }
 
@@ -106,6 +163,23 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
         } finally {
             ui.loadingConcepts = false;
         }
+        await loadPlayables();
+    }
+
+    async function loadPlayables() {
+        const conceptId = ui.panel?.selection.conceptId;
+        if (!conceptId || !ui.concepts.some((concept) => concept.id === conceptId)) {
+            ui.playables = [];
+            return;
+        }
+        ui.loadingPlayables = true;
+        try {
+            ui.playables = await bridge.playables(conceptId);
+        } catch (error) {
+            fail(error);
+        } finally {
+            ui.loadingPlayables = false;
+        }
     }
 
     async function loadExports() {
@@ -114,6 +188,25 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
         } catch (error) {
             fail(error);
         }
+    }
+
+    /** After Build / Package / Upload: stopped at the check, stopped at the field changes, or done. */
+    async function settle(result: BuildResult | undefined, stopped: Stopped, done: (result: BuildResult) => string) {
+        await loadExports();
+        if (!result) return;
+        if (result.check) {
+            ui.check = { report: result.check, stopped };
+            ui.notice = '';
+            return;
+        }
+        ui.check = null;
+        if (result.plan && result.file) {
+            ui.plan = { plan: result.plan, file: result.file };
+            ui.notice = result.file ? `Packaged ${fileName(result.file)}; waiting for your OK to upload` : '';
+            return;
+        }
+        ui.notice = done(result);
+        if (result.uploaded && ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
     }
 
     const Root = defineComponent({
@@ -157,6 +250,7 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                 async pickApplication(event: Event) {
                     const id = Number((event.target as HTMLSelectElement).value) || null;
                     ui.concepts = [];
+                    ui.playables = [];
                     ui.creating = false;
                     const state = await run(() => bridge.select(id, null));
                     if (state) setPanel(state);
@@ -172,6 +266,8 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     }
                     const state = await run(() => bridge.select(ui.panel?.selection.applicationId ?? null, Number(value) || null));
                     if (state) setPanel(state);
+                    ui.playableFilter = '';
+                    await loadPlayables();
                 },
                 async createConcept() {
                     const appId = ui.panel?.selection.applicationId;
@@ -179,30 +275,49 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     const concept = await run(() => bridge.createConcept(appId, ui.newConceptName));
                     if (!concept) return;
                     ui.creating = false;
-                    await loadConcepts(appId);
                     setPanel(await bridge.state());
+                    await loadConcepts(appId);
                     ui.notice = `Concept "${concept.name}" created`;
                 },
-                async build(upload: boolean) {
-                    ui.notice = '';
-                    const result = await run(() => bridge.build(upload));
-                    await loadExports();
-                    if (!result) return;
-                    ui.notice = result.uploaded ? `Built and uploaded to ${selectedConcept.value?.name ?? 'the concept'}` : `Built ${result.file.split(/[\\/]/).pop()}`;
-                    if (result.uploaded && ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
+
+                /* ---- check / build / package / upload ---- */
+                async checkProject() {
+                    const report = await run(() => bridge.checkProject());
+                    if (!report) return;
+                    ui.check = { report, stopped: { kind: 'check' } };
+                    ui.notice = report.issues.length ? '' : `Project check passed: ${report.fields} field${report.fields === 1 ? '' : 's'}, no issues`;
+                    if (!report.issues.length) ui.check = null;
                 },
-                async packageExisting() {
+                async build(upload: boolean, force = false) {
                     ui.notice = '';
-                    const result = await run(() => bridge.packageExisting());
-                    await loadExports();
-                    if (result) ui.notice = `Packaged ${result.file.split(/[\\/]/).pop()}`;
+                    ui.plan = null;
+                    const result = await run(() => bridge.build(upload, force));
+                    await settle(result, { kind: 'build', upload }, (done) =>
+                        done.uploaded ? `Built and uploaded to ${selectedConcept.value?.name ?? 'the concept'}` : `Built ${fileName(done.file)}`,
+                    );
                 },
-                async upload(item: ExportItem) {
+                async packageExisting(force = false) {
                     ui.notice = '';
-                    const result = await run(() => bridge.uploadExport(item.file));
-                    if (!result) return;
-                    ui.notice = `${item.name} uploaded to ${selectedConcept.value?.name ?? 'the concept'}`;
-                    if (ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
+                    const result = await run(() => bridge.packageExisting(force));
+                    await settle(result, { kind: 'package' }, (done) => `Packaged ${fileName(done.file)}`);
+                },
+                /** "Build anyway" / "Package anyway" from the check card. */
+                goOnAnyway() {
+                    const stopped = ui.check?.stopped;
+                    ui.check = null;
+                    if (stopped?.kind === 'build') return actions.build(stopped.upload, true);
+                    if (stopped?.kind === 'package') return actions.packageExisting(true);
+                },
+                async upload(item: ExportItem | { file: string; name: string }, force = false) {
+                    ui.notice = '';
+                    ui.plan = null;
+                    const result = await run(() => bridge.uploadExport(item.file, force));
+                    await settle(result, { kind: 'check' }, () => `${item.name} uploaded to ${selectedConcept.value?.name ?? 'the concept'}`);
+                },
+                uploadAnyway() {
+                    const pending = ui.plan;
+                    ui.plan = null;
+                    if (pending) return actions.upload({ file: pending.file, name: fileName(pending.file) }, true);
                 },
                 async remove(item: ExportItem) {
                     if (ui.confirmDelete !== item.file) {
@@ -214,6 +329,69 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     await loadExports();
                 },
                 reveal: (item: ExportItem) => run(() => bridge.reveal(item.file)),
+
+                /* ---- network sizes: choose one ad network, estimate it ---- */
+                async toggleSizes(item: ExportItem) {
+                    ui.sizesOpen = ui.sizesOpen === item.file ? '' : item.file;
+                    if (!ui.sizesOpen) return;
+                    if (!item.estimates[ui.sizesBuilder] && item.estimates[ui.sizesBuilder === 'pnp' ? 'super-html' : 'pnp']) {
+                        ui.sizesBuilder = ui.sizesBuilder === 'pnp' ? 'super-html' : 'pnp';
+                    }
+                    if (!ui.channelOptions && canEstimate.value) {
+                        ui.channelsError = '';
+                        try {
+                            ui.channelOptions = await bridge.channels();
+                        } catch (error) {
+                            ui.channelsError = error instanceof Error ? error.message : String(error);
+                        }
+                    }
+                },
+                channelsFor: (builder: Builder) => ui.channelOptions?.[builder] ?? [],
+                /** The chosen network, if this server has it (it may be remembered from another server). */
+                chosenNetwork: (builder: Builder) => (actions.channelsFor(builder).some((option) => option.channel === ui.network[builder]) ? ui.network[builder] : ''),
+                chooseNetwork(event: Event) {
+                    ui.network[ui.sizesBuilder] = (event.target as HTMLSelectElement).value;
+                    saveNetworks(ui.network);
+                },
+                /** Estimated networks of the shown builder, in the server's network order. */
+                resultsOf(item: ExportItem) {
+                    const results = item.estimates[ui.sizesBuilder]?.channels ?? [];
+                    const order = actions.channelsFor(ui.sizesBuilder).map((option) => option.channel);
+                    return [...results].sort((a, b) => (order.indexOf(a.channel) + 1 || 999) - (order.indexOf(b.channel) + 1 || 999));
+                },
+                resultOf: (item: ExportItem, channel: string) => item.estimates[ui.sizesBuilder]?.channels.find((result) => result.channel === channel) ?? null,
+                async estimate(item: ExportItem) {
+                    ui.notice = '';
+                    const builder = ui.sizesBuilder;
+                    const channel = actions.chosenNetwork(builder);
+                    if (!channel) return;
+                    const result = await run(() => bridge.estimate(item.file, builder, channel));
+                    await loadExports();
+                    const size = result?.channels.find((entry) => entry.channel === channel);
+                    if (size) {
+                        ui.notice = `${item.name} — ${size.label} (${builder}): ${formatBytes(size.bytes)}${size.maxBytes ? ` of ${formatBytes(size.maxBytes)}` : ''}${size.withinLimit ? ', within the limit' : ', OVER the limit'}`;
+                    }
+                },
+
+                /* ---- playables ---- */
+                refreshPlayables: () => loadPlayables(),
+                async previewPlayable(playable: PlayableItem) {
+                    const result = await run(() => bridge.previewPlayable(playable.id));
+                    if (result) {
+                        ui.notice = `Previewing "${playable.name}" in the browser${result.skippedFiles ? ` (${result.skippedFiles} file field${result.skippedFiles === 1 ? '' : 's'} keep the scene's own asset)` : ''}`;
+                    }
+                },
+                async copyValues(playable: PlayableItem) {
+                    const count = await run(() => bridge.copyPlayableValues(playable.id));
+                    if (count !== undefined) ui.notice = `Copied ${count} value${count === 1 ? '' : 's'} of "${playable.name}" as JSON`;
+                },
+                editPlayable(playable: PlayableItem) {
+                    const panel = ui.panel;
+                    if (!panel) return;
+                    const { applicationId, conceptId } = panel.selection;
+                    return actions.open(`${panel.serverUrl}/applications/${applicationId}/concepts/${conceptId}/playables/${playable.id}`);
+                },
+
                 open: (url: string) => run(() => bridge.openUrl(url)),
                 openDashboard() {
                     const panel = ui.panel;
@@ -223,7 +401,23 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     return actions.open(url);
                 },
             };
-            return { ui, host, signedIn, authOff, selectedApp, selectedConcept, busy, canUpload, formatBytes, formatWhen, ...actions };
+            return {
+                ui,
+                host,
+                signedIn,
+                authOff,
+                canEstimate,
+                selectedApp,
+                selectedConcept,
+                busy,
+                canUpload,
+                shownPlayables,
+                checkErrors,
+                formatBytes,
+                formatWhen,
+                estimateSummary,
+                ...actions,
+            };
         },
     });
 

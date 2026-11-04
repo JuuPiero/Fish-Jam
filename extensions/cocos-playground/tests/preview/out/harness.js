@@ -6,6 +6,49 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // source/connect/diff.ts
+  var keyOf = (field) => field.key ?? `${field.componentType}.${field.propertyKey}@${field.nodePath}`;
+  var classKeyOf = (field) => field.classKey ?? `${field.componentType}.${field.propertyKey}`;
+  var whereOf = (field) => [field.scene, field.nodePath].filter(Boolean).join(" \u203A ");
+  function changeOf(before, after) {
+    const parts = [];
+    if (before.kind !== after.kind) parts.push(`${before.kind} \u2192 ${after.kind}`);
+    if (!!before.isList !== !!after.isList) parts.push(before.isList ? "list \u2192 single value" : "single value \u2192 list");
+    if (before.kind === "enum" && after.kind === "enum") {
+      const now = new Set((after.enumOptions ?? []).map((option) => option.value));
+      const gone = (before.enumOptions ?? []).filter((option) => !now.has(option.value)).map((option) => option.label);
+      if (gone.length) parts.push(`enum options removed: ${gone.join(", ")}`);
+    }
+    return parts.length ? parts.join("; ") : null;
+  }
+  function diffManifests(before, after, playables) {
+    const afterByKey = new Map(after.map((field) => [keyOf(field), field]));
+    const afterClassKeys = new Set(after.map(classKeyOf));
+    const afterProperties = new Set(after.map((field) => field.propertyKey));
+    const beforeKeys = new Set(before.map(keyOf));
+    const usersOf = (field, lost) => playables.filter(({ values }) => {
+      if (keyOf(field) in values) return true;
+      if (classKeyOf(field) in values && (!lost || !afterClassKeys.has(classKeyOf(field)))) return true;
+      return field.propertyKey in values && (!lost || !afterProperties.has(field.propertyKey));
+    }).map(({ name }) => name);
+    const removed = [];
+    const changed = [];
+    let kept = 0;
+    for (const field of before) {
+      const next = afterByKey.get(keyOf(field));
+      const base = { key: keyOf(field), label: field.label || field.propertyKey, where: whereOf(field) };
+      if (!next) {
+        removed.push({ ...base, playables: usersOf(field, true) });
+        continue;
+      }
+      const change = changeOf(field, next);
+      if (change) changed.push({ ...base, change, playables: usersOf(field, false) });
+      else kept++;
+    }
+    const added = after.filter((field) => !beforeKeys.has(keyOf(field))).length;
+    return { removed, changed, added, kept };
+  }
+
   // node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js
   var runtime_dom_esm_bundler_exports = {};
   __export(runtime_dom_esm_bundler_exports, {
@@ -19599,6 +19642,29 @@ ${codeFrame}` : message);
     if (minutes < 24 * 60 && date.getDate() === (/* @__PURE__ */ new Date()).getDate()) return `today ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     return date.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
+  var fileName = (file) => file ? file.split(/[\\/]/).pop() ?? file : "";
+  function estimateSummary(estimate) {
+    if (!estimate || estimate.channels.length === 0) return null;
+    const count = estimate.channels.length;
+    const over = estimate.channels.filter((channel) => !channel.withinLimit);
+    if (over.length === 0) return { text: `${estimate.builder}: ${count === 1 ? estimate.channels[0].label + " is" : count + " networks"} within limits`, ok: true };
+    return { text: `${estimate.builder}: ${over.length} of ${count} over the limit (${over.map((channel) => channel.label).join(", ")})`, ok: false };
+  }
+  var NETWORK_KEY = "cocos-playground.sizes-network";
+  function loadNetworks() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(NETWORK_KEY) ?? "null");
+      if (saved && typeof saved.pnp === "string" && typeof saved["super-html"] === "string") return saved;
+    } catch {
+    }
+    return { pnp: "", "super-html": "" };
+  }
+  function saveNetworks(networks) {
+    try {
+      localStorage.setItem(NETWORK_KEY, JSON.stringify(networks));
+    } catch {
+    }
+  }
   function createPlaygroundApp(el, bridge2, template) {
     const ui = reactive({
       panel: null,
@@ -19607,22 +19673,43 @@ ${codeFrame}` : message);
       applications: [],
       concepts: [],
       exports: [],
+      playables: [],
+      playablesOpen: true,
+      playableFilter: "",
       loadingApps: false,
       loadingConcepts: false,
+      loadingPlayables: false,
       creating: false,
       newConceptName: "",
       confirmDelete: "",
+      /** The project check on show, and what it stopped (if anything). */
+      check: null,
+      /** An upload waiting for confirmation: what it would change. */
+      plan: null,
+      /** The export row whose network sizes are open, and the builder shown there. */
+      sizesOpen: "",
+      sizesBuilder: "pnp",
+      /** Networks per builder (from the server), and the one chosen per builder (one estimate = one network). */
+      channelOptions: null,
+      channelsError: "",
+      network: loadNetworks(),
       error: "",
       notice: "",
       working: false
     });
     const signedIn = computed2(() => !!ui.panel?.account);
     const authOff = computed2(() => ui.panel?.server?.ok === true && !ui.panel.server.authEnabled);
+    const canEstimate = computed2(() => signedIn.value && ui.panel?.server?.ok === true && ui.panel.server.features.includes("estimate"));
     const selectedApp = computed2(() => ui.applications.find((app2) => app2.id === ui.panel?.selection.applicationId) ?? null);
     const selectedConcept = computed2(() => ui.concepts.find((concept) => concept.id === ui.panel?.selection.conceptId) ?? null);
     const busy = computed2(() => !!ui.panel?.busy || ui.working);
     const canUpload = computed2(() => signedIn.value && !!selectedConcept.value && !busy.value);
     const host = computed2(() => ui.panel?.serverUrl.replace(/^https?:\/\//, "") ?? "");
+    const shownPlayables = computed2(() => {
+      const filter = ui.playableFilter.trim().toLowerCase();
+      return filter ? ui.playables.filter((playable) => playable.name.toLowerCase().includes(filter)) : ui.playables;
+    });
+    const checkErrors = computed2(() => ui.check?.report.issues.filter((issue) => issue.level === "error").length ?? 0);
     function fail(error) {
       ui.error = error instanceof Error ? error.message : String(error);
       ui.notice = "";
@@ -19636,6 +19723,7 @@ ${codeFrame}` : message);
       if (!state2.account) {
         ui.applications = [];
         ui.concepts = [];
+        ui.playables = [];
       }
     }
     async function run(work) {
@@ -19672,6 +19760,22 @@ ${codeFrame}` : message);
       } finally {
         ui.loadingConcepts = false;
       }
+      await loadPlayables();
+    }
+    async function loadPlayables() {
+      const conceptId = ui.panel?.selection.conceptId;
+      if (!conceptId || !ui.concepts.some((concept) => concept.id === conceptId)) {
+        ui.playables = [];
+        return;
+      }
+      ui.loadingPlayables = true;
+      try {
+        ui.playables = await bridge2.playables(conceptId);
+      } catch (error) {
+        fail(error);
+      } finally {
+        ui.loadingPlayables = false;
+      }
     }
     async function loadExports() {
       try {
@@ -19679,6 +19783,23 @@ ${codeFrame}` : message);
       } catch (error) {
         fail(error);
       }
+    }
+    async function settle(result, stopped, done) {
+      await loadExports();
+      if (!result) return;
+      if (result.check) {
+        ui.check = { report: result.check, stopped };
+        ui.notice = "";
+        return;
+      }
+      ui.check = null;
+      if (result.plan && result.file) {
+        ui.plan = { plan: result.plan, file: result.file };
+        ui.notice = result.file ? `Packaged ${fileName(result.file)}; waiting for your OK to upload` : "";
+        return;
+      }
+      ui.notice = done(result);
+      if (result.uploaded && ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
     }
     const Root = defineComponent({
       template,
@@ -19721,6 +19842,7 @@ ${codeFrame}` : message);
           async pickApplication(event) {
             const id = Number(event.target.value) || null;
             ui.concepts = [];
+            ui.playables = [];
             ui.creating = false;
             const state2 = await run(() => bridge2.select(id, null));
             if (state2) setPanel(state2);
@@ -19736,6 +19858,8 @@ ${codeFrame}` : message);
             }
             const state2 = await run(() => bridge2.select(ui.panel?.selection.applicationId ?? null, Number(value) || null));
             if (state2) setPanel(state2);
+            ui.playableFilter = "";
+            await loadPlayables();
           },
           async createConcept() {
             const appId = ui.panel?.selection.applicationId;
@@ -19743,30 +19867,50 @@ ${codeFrame}` : message);
             const concept = await run(() => bridge2.createConcept(appId, ui.newConceptName));
             if (!concept) return;
             ui.creating = false;
-            await loadConcepts(appId);
             setPanel(await bridge2.state());
+            await loadConcepts(appId);
             ui.notice = `Concept "${concept.name}" created`;
           },
-          async build(upload) {
-            ui.notice = "";
-            const result = await run(() => bridge2.build(upload));
-            await loadExports();
-            if (!result) return;
-            ui.notice = result.uploaded ? `Built and uploaded to ${selectedConcept.value?.name ?? "the concept"}` : `Built ${result.file.split(/[\\/]/).pop()}`;
-            if (result.uploaded && ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
+          /* ---- check / build / package / upload ---- */
+          async checkProject() {
+            const report = await run(() => bridge2.checkProject());
+            if (!report) return;
+            ui.check = { report, stopped: { kind: "check" } };
+            ui.notice = report.issues.length ? "" : `Project check passed: ${report.fields} field${report.fields === 1 ? "" : "s"}, no issues`;
+            if (!report.issues.length) ui.check = null;
           },
-          async packageExisting() {
+          async build(upload, force = false) {
             ui.notice = "";
-            const result = await run(() => bridge2.packageExisting());
-            await loadExports();
-            if (result) ui.notice = `Packaged ${result.file.split(/[\\/]/).pop()}`;
+            ui.plan = null;
+            const result = await run(() => bridge2.build(upload, force));
+            await settle(
+              result,
+              { kind: "build", upload },
+              (done) => done.uploaded ? `Built and uploaded to ${selectedConcept.value?.name ?? "the concept"}` : `Built ${fileName(done.file)}`
+            );
           },
-          async upload(item) {
+          async packageExisting(force = false) {
             ui.notice = "";
-            const result = await run(() => bridge2.uploadExport(item.file));
-            if (!result) return;
-            ui.notice = `${item.name} uploaded to ${selectedConcept.value?.name ?? "the concept"}`;
-            if (ui.panel?.selection.applicationId) await loadConcepts(ui.panel.selection.applicationId);
+            const result = await run(() => bridge2.packageExisting(force));
+            await settle(result, { kind: "package" }, (done) => `Packaged ${fileName(done.file)}`);
+          },
+          /** "Build anyway" / "Package anyway" from the check card. */
+          goOnAnyway() {
+            const stopped = ui.check?.stopped;
+            ui.check = null;
+            if (stopped?.kind === "build") return actions.build(stopped.upload, true);
+            if (stopped?.kind === "package") return actions.packageExisting(true);
+          },
+          async upload(item, force = false) {
+            ui.notice = "";
+            ui.plan = null;
+            const result = await run(() => bridge2.uploadExport(item.file, force));
+            await settle(result, { kind: "check" }, () => `${item.name} uploaded to ${selectedConcept.value?.name ?? "the concept"}`);
+          },
+          uploadAnyway() {
+            const pending = ui.plan;
+            ui.plan = null;
+            if (pending) return actions.upload({ file: pending.file, name: fileName(pending.file) }, true);
           },
           async remove(item) {
             if (ui.confirmDelete !== item.file) {
@@ -19778,6 +19922,66 @@ ${codeFrame}` : message);
             await loadExports();
           },
           reveal: (item) => run(() => bridge2.reveal(item.file)),
+          /* ---- network sizes: choose one ad network, estimate it ---- */
+          async toggleSizes(item) {
+            ui.sizesOpen = ui.sizesOpen === item.file ? "" : item.file;
+            if (!ui.sizesOpen) return;
+            if (!item.estimates[ui.sizesBuilder] && item.estimates[ui.sizesBuilder === "pnp" ? "super-html" : "pnp"]) {
+              ui.sizesBuilder = ui.sizesBuilder === "pnp" ? "super-html" : "pnp";
+            }
+            if (!ui.channelOptions && canEstimate.value) {
+              ui.channelsError = "";
+              try {
+                ui.channelOptions = await bridge2.channels();
+              } catch (error) {
+                ui.channelsError = error instanceof Error ? error.message : String(error);
+              }
+            }
+          },
+          channelsFor: (builder) => ui.channelOptions?.[builder] ?? [],
+          /** The chosen network, if this server has it (it may be remembered from another server). */
+          chosenNetwork: (builder) => actions.channelsFor(builder).some((option) => option.channel === ui.network[builder]) ? ui.network[builder] : "",
+          chooseNetwork(event) {
+            ui.network[ui.sizesBuilder] = event.target.value;
+            saveNetworks(ui.network);
+          },
+          /** Estimated networks of the shown builder, in the server's network order. */
+          resultsOf(item) {
+            const results = item.estimates[ui.sizesBuilder]?.channels ?? [];
+            const order = actions.channelsFor(ui.sizesBuilder).map((option) => option.channel);
+            return [...results].sort((a, b) => (order.indexOf(a.channel) + 1 || 999) - (order.indexOf(b.channel) + 1 || 999));
+          },
+          resultOf: (item, channel) => item.estimates[ui.sizesBuilder]?.channels.find((result) => result.channel === channel) ?? null,
+          async estimate(item) {
+            ui.notice = "";
+            const builder = ui.sizesBuilder;
+            const channel = actions.chosenNetwork(builder);
+            if (!channel) return;
+            const result = await run(() => bridge2.estimate(item.file, builder, channel));
+            await loadExports();
+            const size = result?.channels.find((entry) => entry.channel === channel);
+            if (size) {
+              ui.notice = `${item.name} \u2014 ${size.label} (${builder}): ${formatBytes(size.bytes)}${size.maxBytes ? ` of ${formatBytes(size.maxBytes)}` : ""}${size.withinLimit ? ", within the limit" : ", OVER the limit"}`;
+            }
+          },
+          /* ---- playables ---- */
+          refreshPlayables: () => loadPlayables(),
+          async previewPlayable(playable) {
+            const result = await run(() => bridge2.previewPlayable(playable.id));
+            if (result) {
+              ui.notice = `Previewing "${playable.name}" in the browser${result.skippedFiles ? ` (${result.skippedFiles} file field${result.skippedFiles === 1 ? "" : "s"} keep the scene's own asset)` : ""}`;
+            }
+          },
+          async copyValues(playable) {
+            const count = await run(() => bridge2.copyPlayableValues(playable.id));
+            if (count !== void 0) ui.notice = `Copied ${count} value${count === 1 ? "" : "s"} of "${playable.name}" as JSON`;
+          },
+          editPlayable(playable) {
+            const panel = ui.panel;
+            if (!panel) return;
+            const { applicationId, conceptId } = panel.selection;
+            return actions.open(`${panel.serverUrl}/applications/${applicationId}/concepts/${conceptId}/playables/${playable.id}`);
+          },
           open: (url) => run(() => bridge2.openUrl(url)),
           openDashboard() {
             const panel = ui.panel;
@@ -19787,7 +19991,23 @@ ${codeFrame}` : message);
             return actions.open(url);
           }
         };
-        return { ui, host, signedIn, authOff, selectedApp, selectedConcept, busy, canUpload, formatBytes, formatWhen, ...actions };
+        return {
+          ui,
+          host,
+          signedIn,
+          authOff,
+          canEstimate,
+          selectedApp,
+          selectedConcept,
+          busy,
+          canUpload,
+          shownPlayables,
+          checkErrors,
+          formatBytes,
+          formatWhen,
+          estimateSummary,
+          ...actions
+        };
       }
     });
     const app = createApp(Root);
@@ -19840,14 +20060,94 @@ ${codeFrame}` : message);
     ],
     2: [{ id: 21, name: "Bus - Rush hour", buildUploadedAt: ago(60 * 30) }]
   };
+  var MB = 1024 * 1024;
+  var NETWORKS = {
+    pnp: [
+      ["AppLovin", "AppLovin", "html", 5],
+      ["Facebook", "Facebook", "html", 2],
+      ["Google", "Google", "zip", 5],
+      ["IronSource", "IronSource", "html", 5],
+      ["Liftoff", "Liftoff", "zip", null],
+      ["Mintegral", "Mintegral", "zip", 5],
+      ["Moloco", "Moloco", "html", null],
+      ["Pangle", "Pangle", "zip", 5],
+      ["Rubeex", "Rubeex", "html", null],
+      ["Tiktok", "TikTok", "zip", 5],
+      ["Unity", "Unity", "html", 5]
+    ],
+    "super-html": [
+      ["applovin", "AppLovin", "html", 5],
+      ["facebook", "Facebook (html)", "html", 2],
+      ["facebook_zip", "Facebook (zip)", "zip", 2],
+      ["google_portrait", "Google (portrait)", "zip", 5],
+      ["unity", "Unity", "html", 5]
+    ]
+  };
+  var sizeOf = (builder, channel, scale) => {
+    const [id, label, format, cap] = NETWORKS[builder].find(([c]) => c === channel);
+    const bytes = Math.round((format === "html" ? 2.6 : 1.9) * MB * scale);
+    const maxBytes = cap === null ? null : cap * MB;
+    return { channel: id, label, format, bytes, maxBytes, withinLimit: maxBytes === null || bytes <= maxBytes, at: ago(2) };
+  };
+  var pnpEstimate = (scale) => ({
+    builder: "pnp",
+    at: ago(2),
+    channels: ["AppLovin", "Facebook", "Google", "IronSource", "Liftoff", "Mintegral", "Unity"].map((channel) => sizeOf("pnp", channel, scale))
+  });
   var exportsList = [
-    { file: "C:/proj/build/cocos-playground-export/HexaSort_20261104-101500.zip", name: "HexaSort_20261104-101500.zip", bytes: 3456789, createdAt: ago(3), fields: 7 },
-    { file: "C:/proj/build/cocos-playground-export/HexaSort_20261103-174210.zip", name: "HexaSort_20261103-174210.zip", bytes: 3401222, createdAt: ago(60 * 20), fields: 0 }
+    {
+      file: "C:/proj/build/cocos-playground-export/HexaSort_20261104-101500.zip",
+      name: "HexaSort_20261104-101500.zip",
+      bytes: 3456789,
+      createdAt: ago(3),
+      fields: 7,
+      issues: [{ level: "warning", message: '2 nodes share the field key "Board.size@Canvas/Board" (same node path): the dashboard edits them as one.' }],
+      estimates: { pnp: pnpEstimate(1) }
+    },
+    { file: "C:/proj/build/cocos-playground-export/HexaSort_20261103-174210.zip", name: "HexaSort_20261103-174210.zip", bytes: 3401222, createdAt: ago(60 * 20), fields: 0, issues: null, estimates: {} }
   ];
+  var playablesOf = {
+    11: [
+      { id: 501, name: "Hexa L5 - blue theme", updatedAt: ago(30), values: 6, fileValues: 1 },
+      { id: 502, name: "Hexa L5 - hard mode", updatedAt: ago(60 * 26), values: 3, fileValues: 0 }
+    ]
+  };
+  var projectIssues = {
+    at: ago(0),
+    fields: 7,
+    issues: [
+      { level: "error", message: '@playGroundField on Board.theme references unknown type "ThemeData", skipping.' },
+      { level: "warning", message: "enum Difficulty.Insane: value is not a compile-time constant, skipping it." }
+    ]
+  };
+  var checkIssues = mode === "check" || mode === "interact";
+  var acceptedCheck = false;
+  var riskyUpload = mode === "plan" || mode === "interact";
+  var plan = {
+    conceptName: "Hexa - Level 5 fail",
+    replaces: true,
+    playables: 2,
+    ...diffManifests(
+      [
+        { key: "Board.size@Canvas/Board", nodePath: "Canvas/Board", scene: "main.scene", componentType: "Board", propertyKey: "size", label: "Board size", kind: "number" },
+        { key: "Board.theme@Canvas/Board", nodePath: "Canvas/Board", scene: "main.scene", componentType: "Board", propertyKey: "theme", label: "Theme", kind: "enum", enumOptions: [{ label: "Blue", value: 0 }, { label: "Red", value: 1 }] },
+        { key: "Hud.title@Canvas/Hud", nodePath: "Canvas/Hud", scene: "main.scene", componentType: "Hud", propertyKey: "title", label: "Title", kind: "string" }
+      ],
+      [
+        { key: "Board.size@Canvas/Board", nodePath: "Canvas/Board", scene: "main.scene", componentType: "Board", propertyKey: "size", label: "Board size", kind: "string" },
+        { key: "Board.theme@Canvas/Board", nodePath: "Canvas/Board", scene: "main.scene", componentType: "Board", propertyKey: "theme", label: "Theme", kind: "enum", enumOptions: [{ label: "Blue", value: 0 }] },
+        { key: "Hud.score@Canvas/Hud", nodePath: "Canvas/Hud", scene: "main.scene", componentType: "Hud", propertyKey: "score", label: "Score", kind: "number" }
+      ],
+      [
+        { name: "Hexa L5 - blue theme", values: { "Board.size@Canvas/Board": 7, "Hud.title@Canvas/Hud": "Go!" } },
+        { name: "Hexa L5 - hard mode", values: { "Board.theme": 1 } }
+      ]
+    )
+  };
   var state = {
     serverUrl: DEFAULT,
     defaultServerUrl: DEFAULT,
-    server: mode === "down" ? { ok: false, error: "connect ECONNREFUSED 168.138.171.60:443" } : { ok: true, authEnabled: true },
+    server: mode === "down" ? { ok: false, error: "connect ECONNREFUSED 168.138.171.60:443" } : { ok: true, authEnabled: true, features: ["estimate"] },
     account: mode === "signin" || mode === "pending" || mode === "down" || mode === "interact" ? null : { email: "dev@example.com", expiresAt: ago(-60 * 24 * 90) },
     signIn: mode === "pending" ? { userCode: "KQWX-7RTM", verificationUri: `${DEFAULT}/extension/connect?code=KQWX-7RTM` } : null,
     selection: mode === "interact" ? { applicationId: null, conceptId: null } : { applicationId: 1, conceptId: 11 },
@@ -19859,6 +20159,7 @@ ${codeFrame}` : message);
   var publish = () => listeners.forEach((l) => l(snapshot()));
   var tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
   var failNextUpload = false;
+  var builds = 0;
   var bridge = {
     async state() {
       calls.push("state");
@@ -19872,7 +20173,7 @@ ${codeFrame}` : message);
       calls.push(`setServerUrl ${url}`);
       if (!/^https?:\/\/[^/]+/.test(url)) throw new Error("Enter an http(s) URL");
       state.serverUrl = url.replace(/\/+$/, "");
-      state.server = { ok: true, authEnabled: true };
+      state.server = { ok: true, authEnabled: true, features: ["estimate"] };
       return snapshot();
     },
     async signIn() {
@@ -19925,28 +20226,74 @@ ${codeFrame}` : message);
       calls.push(`deleteExport ${file}`);
       exportsList = exportsList.filter((e) => e.file !== file);
     },
-    async build(upload) {
-      calls.push(`build ${upload}`);
+    async checkProject() {
+      calls.push("checkProject");
+      return checkIssues ? projectIssues : { at: ago(0), fields: 7, issues: [] };
+    },
+    async build(upload, force) {
+      calls.push(`build ${upload}${force ? " force" : ""}`);
+      if (checkIssues && !force && !acceptedCheck) return { file: null, uploaded: false, check: projectIssues };
+      if (force) acceptedCheck = true;
       for (const [label, progress] of [["Building", null], ["Packaging", null], ...upload ? [["Uploading", 0.5]] : []]) {
         state.busy = { label, message: "web-mobile", progress };
         publish();
         await tick(40);
       }
       state.busy = null;
-      const item = { file: "C:/proj/build/cocos-playground-export/HexaSort_new.zip", name: "HexaSort_new.zip", bytes: 35e5, createdAt: ago(0), fields: 7 };
+      builds++;
+      const name = builds === 1 ? "HexaSort_new.zip" : `HexaSort_new_${builds}.zip`;
+      const item = { file: `C:/proj/build/cocos-playground-export/${name}`, name, bytes: 35e5, createdAt: ago(0), fields: 7, issues: [], estimates: {} };
       exportsList = [item, ...exportsList];
+      publish();
+      if (upload && riskyUpload) return { file: item.file, uploaded: false, plan };
       if (upload) markUploaded();
       publish();
       return { file: item.file, uploaded: upload };
     },
-    async packageExisting() {
-      calls.push("packageExisting");
-      const item = { file: "C:/proj/build/cocos-playground-export/HexaSort_pkg.zip", name: "HexaSort_pkg.zip", bytes: 33e5, createdAt: ago(0), fields: 7 };
+    async packageExisting(force) {
+      calls.push(`packageExisting${force ? " force" : ""}`);
+      const item = { file: "C:/proj/build/cocos-playground-export/HexaSort_pkg.zip", name: "HexaSort_pkg.zip", bytes: 33e5, createdAt: ago(0), fields: 7, issues: [], estimates: {} };
       exportsList = [item, ...exportsList];
       return { file: item.file, uploaded: false };
     },
-    async uploadExport(file) {
-      calls.push(`uploadExport ${file}`);
+    async channels() {
+      calls.push("channels");
+      const of = (builder) => NETWORKS[builder].map(([channel, label, , cap]) => ({ channel, label, maxBytes: cap === null ? null : cap * MB }));
+      return { pnp: of("pnp"), "super-html": of("super-html") };
+    },
+    async estimate(file, builder, channel) {
+      calls.push(`estimate ${builder} ${channel}`);
+      if (!channel) throw new Error("Pick the ad network to estimate");
+      const picked = [channel];
+      state.busy = { label: "Estimate size", message: `Packing for ${channel} (${builder}) on the server\u2026`, progress: null };
+      publish();
+      await tick(60);
+      state.busy = null;
+      publish();
+      const fresh = picked.map((channel2) => ({ ...sizeOf(builder, channel2, file.endsWith("101500.zip") ? 1 : 1.3), at: ago(0) }));
+      const item = exportsList.find((e) => e.file === file);
+      const before = item.estimates[builder]?.channels ?? [];
+      const result = { builder, at: ago(0), channels: [...before.filter((c) => !picked.includes(c.channel)), ...fresh] };
+      exportsList = exportsList.map((e) => e.file === file ? { ...e, estimates: { ...e.estimates, [builder]: result } } : e);
+      return result;
+    },
+    async playables(conceptId) {
+      calls.push(`playables ${conceptId}`);
+      await tick();
+      return playablesOf[conceptId] ?? [];
+    },
+    async previewPlayable(id) {
+      calls.push(`previewPlayable ${id}`);
+      const skipped = playablesOf[11]?.find((p2) => p2.id === id)?.fileValues ?? 0;
+      return { url: `http://localhost:7456/?pgvo=xyz`, skippedFiles: skipped };
+    },
+    async copyPlayableValues(id) {
+      calls.push(`copyPlayableValues ${id}`);
+      return playablesOf[11]?.find((p2) => p2.id === id)?.values ?? 0;
+    },
+    async uploadExport(file, force) {
+      calls.push(`uploadExport ${file}${force ? " force" : ""}`);
+      if (riskyUpload && !force) return { file, uploaded: false, plan };
       if (failNextUpload) {
         failNextUpload = false;
         throw new Error("Upload failed: 413 Payload Too Large");
@@ -19974,6 +20321,28 @@ ${codeFrame}` : message);
   }
   createPlaygroundApp(document.getElementById("app"), bridge, window.__TEMPLATE__);
   if (mode === "settings") setTimeout(() => document.querySelector('[title="Settings"]').click(), 50);
+  var clickWhenThere = (find) => {
+    const timer = setInterval(() => {
+      const el = find();
+      if (el) {
+        clearInterval(timer);
+        el.click();
+      }
+    }, 30);
+  };
+  var buttonText = (text) => Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
+  if (mode === "check") clickWhenThere(() => document.querySelectorAll(".pg-playables .pg-row").length ? buttonText("Build & Upload") : null);
+  if (mode === "plan") clickWhenThere(() => document.querySelectorAll(".pg-playables .pg-row").length ? document.querySelector(".pg-export .pg-row-actions button") : null);
+  if (mode === "sizes") {
+    clickWhenThere(() => document.querySelectorAll(".pg-playables .pg-row").length ? buttonText("Sizes") : null);
+    const pick = setInterval(() => {
+      const select = document.querySelector(".pg-network");
+      if (!select) return;
+      clearInterval(pick);
+      select.value = "Facebook";
+      select.dispatchEvent(new Event("change"));
+    }, 30);
+  }
   var $ = (sel) => document.querySelector(sel);
   var $$ = (sel) => Array.from(document.querySelectorAll(sel));
   var byText = (sel, text) => $$(sel).find((el) => el.textContent.trim().startsWith(text)) ?? null;
@@ -19994,8 +20363,9 @@ ${codeFrame}` : message);
     await until(() => !!byText("button", "Sign in with browser"));
     check("signed out shows Sign in", !!byText("button", "Sign in with browser"));
     check("Build & Upload disabled when signed out", !!byText("button", "Build & Upload")?.hasAttribute("disabled"));
-    check("exports listed", $$(".pg-row").length === 2, `${$$(".pg-row").length} rows`);
-    check("field count shown", $$(".pg-row")[0]?.textContent.includes("7 fields") ?? false);
+    check("exports listed", $$(".pg-export").length === 2, `${$$(".pg-export").length} rows`);
+    check("field count shown", $$(".pg-export")[0]?.textContent.includes("7 fields") ?? false);
+    check("package issues badge", $$(".pg-export")[0]?.querySelector(".pg-badge.warn")?.textContent.includes("1") ?? false);
     byText("button", "Sign in with browser").click();
     check("pending code shown", await until(() => $(".pg-code")?.textContent === "KQWX-7RTM"));
     check("signed in after approval", await until(() => !!$("#pg-app")));
@@ -20007,6 +20377,48 @@ ${codeFrame}` : message);
     await until(() => calls.includes("select 1 11"));
     check("concept selected", await until(() => $(".pg-card")?.textContent.includes("Last upload: ") ?? false));
     check("Build & Upload enabled", await until(() => !byText("button", "Build & Upload").hasAttribute("disabled")));
+    check("playables listed", await until(() => $$(".pg-playables .pg-row").length === 2), `${$$(".pg-playables .pg-row").length}`);
+    check("playable shows its file values", $$(".pg-playables .pg-row")[0].textContent.includes("6 values (1 file)"));
+    byText(".pg-playables button", "Preview").click();
+    check("preview in Cocos", await until(() => $(".pg-status").textContent.includes('Previewing "Hexa L5 - blue theme"') && $(".pg-status").textContent.includes("1 file field")), $(".pg-status").textContent.trim());
+    $$(".pg-playables .pg-row")[1].querySelector("button:nth-child(2)").click();
+    check("copy values", await until(() => $(".pg-status").textContent.includes('Copied 3 values of "Hexa L5 - hard mode"')));
+    byText(".pg-playables button", "Edit").click();
+    check("edit on the dashboard", await until(() => calls.some((c) => c.endsWith("/applications/1/concepts/11/playables/501"))));
+    await until(() => !byText("button", "Check project").hasAttribute("disabled"));
+    byText("button", "Check project").click();
+    check("check report shown", await until(() => !!$(".pg-check") && $(".pg-check").textContent.includes("Project check:") && $$(".pg-issues li").length === 2), $(".pg-check")?.textContent ?? "");
+    check("check report counts", /1 error, 1 warning/.test($(".pg-check").textContent.replace(/\s+/g, " ")));
+    byText(".pg-check button", "Close").click();
+    check("check report closes", await until(() => !$(".pg-check")));
+    const sizeLine = () => $$(".pg-export")[0].querySelector(".pg-size-line")?.textContent ?? "";
+    check("size summary on the row", sizeLine().includes("pnp: 1 of 7 over the limit (Facebook)"), sizeLine());
+    byText(".pg-export button", "Sizes").click();
+    const network = () => $(".pg-network");
+    const estimateButton = () => byText(".pg-sizes button", "Estimate");
+    check("dropdown lists every network (+ placeholder)", await until(() => network()?.options.length === 12), `${network()?.options.length}`);
+    check("dropdown is single choice", !!network() && !network().multiple);
+    check("estimated networks listed with sizes", $$(".pg-table tr").length === 7 && $$(".pg-table tr.over").length === 1);
+    check("no network chosen: Estimate disabled", !!estimateButton()?.disabled);
+    check("options show cap and result", [...network().options].some((o) => o.textContent.includes("Facebook (\u2264 2.00 MB)") && o.textContent.includes("\u2715")));
+    choose(network(), "Moloco");
+    check("network chosen: Estimate enabled", await until(() => !estimateButton().disabled && estimateButton().textContent.trim() === "Estimate"));
+    estimateButton().click();
+    check("only that network is packed", await until(() => calls.includes("estimate pnp Moloco")), calls.filter((c) => c.startsWith("estimate")).join(" | "));
+    check("result merged with the earlier ones", await until(() => sizeLine().includes("1 of 8 over the limit") && $$(".pg-table tr").length === 8), sizeLine());
+    check("result notice", $(".pg-status").textContent.includes("Moloco (pnp): 2.60 MB, within the limit"), $(".pg-status").textContent.trim());
+    check("chosen row highlighted, button says again", !!$(".pg-table tr.chosen")?.textContent.includes("Moloco") && estimateButton().textContent.trim() === "Estimate again");
+    check("choice remembered", JSON.parse(localStorage.getItem("cocos-playground.sizes-network") ?? "{}").pnp === "Moloco");
+    check("no estimate-all control", !byText(".pg-sizes button", "All") && !$(".pg-sizes input[type=checkbox]"));
+    byText(".pg-seg button", "super-html").click();
+    check("super-html: nothing estimated yet", await until(() => !!$(".pg-sizes")?.textContent.includes("No super-html network estimated yet") && network()?.options.length === 6));
+    choose(network(), "facebook");
+    await until(() => !estimateButton().disabled);
+    estimateButton().click();
+    check("super-html estimate", await until(() => calls.includes("estimate super-html facebook") && $$(".pg-export")[0].querySelectorAll(".pg-size-line").length === 2));
+    check("single-network summary", [...$$(".pg-export")[0].querySelectorAll(".pg-size-line")].some((l) => l.textContent.includes("super-html: 1 of 1 over the limit (Facebook (html))")));
+    byText(".pg-export button", "Sizes").click();
+    check("sizes close", await until(() => !$(".pg-sizes")));
     choose($("#pg-concept"), "__new");
     check("new concept input", await until(() => !!$('input[placeholder="New concept name"]')));
     const nameInput = $('input[placeholder="New concept name"]');
@@ -20017,24 +20429,40 @@ ${codeFrame}` : message);
     check("concept created and selected", await until(() => $("#pg-concept")?.selectedOptions[0]?.textContent === "Hexa - Boss level"));
     check("created notice", await until(() => $(".pg-status").textContent.includes("created")));
     byText("button", "Build & Upload").click();
+    check("build stopped at the check", await until(() => !!$(".pg-check") && $(".pg-check").textContent.includes("Build stopped")), $(".pg-check")?.textContent ?? "");
+    check("nothing built yet", !calls.some((c) => c === "build true force") && $$(".pg-export").length === 2);
+    byText(".pg-check button", "Build & Upload anyway").click();
     check("busy shown while building", await until(() => !!$(".pg-busy")));
     check("buttons disabled while busy", !!byText("button", "Build")?.hasAttribute("disabled"));
-    check("build finished", await until(() => !$(".pg-busy") && $(".pg-status").textContent.includes("uploaded")), $(".pg-status").textContent.trim());
-    check("new export listed", await until(() => $$(".pg-row").length === 3));
+    check("upload stopped at the field changes", await until(() => !!$(".pg-dialog")), $(".pg-status").textContent.trim());
+    const dialog = () => $(".pg-dialog").textContent.replace(/\s+/g, " ");
+    check("dialog: removed field + who uses it", dialog().includes("Removed (1)") && dialog().includes("Title") && dialog().includes("Used by Hexa L5 - blue theme"), dialog());
+    check("dialog: changed fields", dialog().includes("Changed (2)") && dialog().includes("number \u2192 string") && dialog().includes("enum options removed: Red"), dialog());
+    check("dialog: class-key value counts", dialog().includes("Used by Hexa L5 - hard mode"), dialog());
+    check("dialog: summary", dialog().includes("1 new") && dialog().includes("2 playables"), dialog());
+    byText(".pg-dialog button", "Cancel").click();
+    check("cancel keeps the package, no upload", await until(() => !$(".pg-dialog")) && $$(".pg-export").length === 3 && !calls.some((c) => c.includes("force") && c.startsWith("uploadExport")));
+    $$(".pg-export")[0].querySelector("button").click();
+    check("upload asks again", await until(() => !!$(".pg-dialog")));
+    byText(".pg-dialog button", "Upload anyway").click();
+    check("upload anyway", await until(() => $(".pg-status").textContent.includes("uploaded to Hexa - Boss level")), $(".pg-status").textContent.trim());
     check("last upload link", !!byText(".pg-status button", "View upload"));
+    byText("button", "Build").click();
+    check("accepted issues do not stop the next build", await until(() => $(".pg-status").textContent.includes("Built HexaSort_new_2.zip")) && !$(".pg-check"), $(".pg-status").textContent.trim());
+    riskyUpload = false;
     failNextUpload = true;
-    byText(".pg-row button", "Upload").click();
+    $$(".pg-export")[0].querySelector("button").click();
     check("upload error shown", await until(() => !!$(".pg-status .pg-error-text")), $(".pg-status").textContent.trim());
     byText(".pg-status button", "Dismiss").click();
     await tick();
-    byText(".pg-row button", "Upload").click();
+    $$(".pg-export")[0].querySelector("button").click();
     check("upload ok", await until(() => $(".pg-status").textContent.includes("uploaded to Hexa - Boss level")));
-    const del = () => $$(".pg-row")[2].querySelectorAll("button")[2];
+    const del = () => $$(".pg-export")[2].querySelectorAll(".pg-row-actions button")[3];
     del().click();
     check("delete asks", await until(() => del().textContent === "Sure?"));
     del().click();
-    check("deleted", await until(() => $$(".pg-row").length === 2));
-    byText(".pg-row button", "Reveal").click();
+    check("deleted", await until(() => $$(".pg-export").length === 3));
+    $('[title="Show in folder"]').click();
     byText("button", "Open in dashboard").click();
     await tick();
     check("reveal + open dashboard", calls.some((c) => c.startsWith("reveal ")) && calls.some((c) => /openUrl .*\/applications\/1\/concepts\/\d+$/.test(c)));

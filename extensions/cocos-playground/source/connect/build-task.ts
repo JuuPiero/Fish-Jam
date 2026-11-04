@@ -37,10 +37,18 @@ function outputDir(projectRoot: string, options: Record<string, any>): string {
     return path.join(base, String(options.outputName || options.platform || 'web-mobile'));
 }
 
+const lastWebMobile = (list: BuildTask[]) => list.filter((task) => (task.rawOptions ?? task.options)?.platform === 'web-mobile').sort((a, b) => timeOf(b) - timeOf(a))[0];
+
+/** Where the next Build will write (the last web-mobile task's folder), or null with no such task. */
+export async function lastWebMobileOutput(projectRoot: string): Promise<string | null> {
+    const last = lastWebMobile(await tasks());
+    return last ? outputDir(projectRoot, last.rawOptions ?? last.options) : null;
+}
+
 /** Builds Web Mobile like the last time, reporting progress (0–1); resolves with the output folder. */
 export async function runWebMobileBuild(projectRoot: string, onProgress: (fraction: number, message: string) => void): Promise<string> {
     const before = await tasks();
-    const last = before.filter((task) => (task.rawOptions ?? task.options)?.platform === 'web-mobile').sort((a, b) => timeOf(b) - timeOf(a))[0];
+    const last = lastWebMobile(before);
     if (!last) {
         void request('builder', 'open');
         throw new Error('No Web Mobile build to repeat yet. Build once for "Web Mobile" in the Build panel (now open); after that, Build here repeats it.');
