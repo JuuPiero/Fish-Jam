@@ -320,9 +320,11 @@ Mở bằng menu **Cocos Playground → Open panel**.
    giữ.
 8. **Sizes (dung lượng theo network):** chọn pnp hoặc super-html, chọn **một** mạng quảng cáo trong
    dropdown, rồi bấm **Estimate**.
-   - Mỗi lần chỉ đo một mạng: đó là một lần đóng gói thật trên server.
-   - Dashboard trả về kích thước file của mạng đó so với giới hạn của nó (Facebook 2 MB, phần lớn
-     các mạng khác 5 MB). Server không lưu gì.
+   - Việc đo chạy ngay trong extension, không cần server hay đăng nhập. Extension đóng gói thật zip
+     cho mạng đó bằng chính builder của dashboard (bản sao trong `source/exporters/`), trong một tiến
+     trình con nên editor không bị đơ. Mỗi lần chỉ đo một mạng, khoảng 2–5 giây.
+   - Kết quả là kích thước file của mạng đó so với giới hạn của nó (Facebook 2 MB, phần lớn các mạng
+     khác 5 MB). Số đo khớp với file dashboard xuất ra.
    - Kết quả lưu cạnh zip. Bảng bên dưới gộp mọi mạng đã đo; đo lại một mạng thì thay kết quả cũ của
      mạng đó.
    - Panel nhớ mạng bạn chọn gần nhất.

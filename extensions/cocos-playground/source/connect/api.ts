@@ -57,10 +57,6 @@ export interface Playable {
     updated_at: string;
 }
 
-export interface EstimateResponse {
-    builder: string;
-    channels: { channel: string; label: string; format: 'html' | 'zip'; bytes: number; max_bytes: number | null; within_limit: boolean }[];
-}
 
 async function call<T>(server: string, route: string, init: { method?: string; token?: string | null; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
     let response: Response;
@@ -111,19 +107,6 @@ export const api = {
 export function uploadBuild(server: string, token: string | null, conceptId: number, file: string, onProgress: (fraction: number) => void): Promise<Concept> {
     return postFile<Concept>(`${server}/api/concepts/${conceptId}/build`, server, token, file, onProgress);
 }
-
-/**
- * One network's size for a package (`POST /api/extension/estimate?builder=&channel=`): the server
- * packs it for that network; `onProgress` follows the upload, then the server works (seconds).
- */
-export function estimateSize(server: string, token: string | null, builder: string, channel: string, file: string, onProgress: (fraction: number) => void): Promise<EstimateResponse> {
-    const query = new URLSearchParams({ builder, channel });
-    return postFile<EstimateResponse>(`${server}/api/extension/estimate?${query}`, server, token, file, onProgress);
-}
-
-/** The networks each builder packs for (`GET /api/extension/estimate`). */
-export const channelOptions = (server: string, token: string | null) =>
-    call<Record<string, { channel: string; label: string; max_bytes: number | null }[]>>(server, '/extension/estimate', { token });
 
 function postFile<T>(target: string, server: string, token: string | null, file: string, onProgress: (fraction: number) => void): Promise<T> {
     const url = new URL(target);

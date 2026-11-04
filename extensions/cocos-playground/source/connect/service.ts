@@ -19,7 +19,8 @@ import {
     type SizeEstimate,
     type UploadPlan,
 } from '../shared';
-import { api, ApiError, channelOptions, estimateSize, uploadBuild } from './api';
+import { api, ApiError, uploadBuild } from './api';
+import { measureInWorker, networks } from './estimate';
 import { lastWebMobileOutput, runWebMobileBuild } from './build-task';
 import { deletePackage, listExports, readManifest, readMeta, requireExport, writeMeta } from './builds';
 import { checkProject, sameIssues } from './check';
@@ -349,53 +350,36 @@ export function uploadExport(file: string, force = false): Promise<BuildResult> 
     });
 }
 
-function requireEstimate(): void {
-    if (state.server?.ok && !state.server.features.includes('estimate')) {
-        throw new Error(`${state.serverUrl} can't estimate sizes yet: it needs a newer next-playground`);
-    }
-}
-
 /** The networks each builder packs for, with their size caps (for the panel's network picker). */
 export async function channels(): Promise<Record<Builder, ChannelOption[]>> {
-    requireEstimate();
-    try {
-        const options = await channelOptions(state.serverUrl, token());
-        const of = (builder: Builder) => (options[builder] ?? []).map((option) => ({ channel: option.channel, label: option.label, maxBytes: option.max_bytes }));
-        return { pnp: of('pnp'), 'super-html': of('super-html') };
-    } catch (error) {
-        return onApiError(error);
-    }
+    return networks();
 }
 
 /**
- * One network's size for a package (one network at a time: each is a full pack on the server). Kept
- * beside the package, merged with the networks estimated before (each keeps its latest result).
+ * One network's size for a package, packed right here by the dashboard's own builders (in a child
+ * process: connect/estimate.ts) — one network at a time. Kept beside the package, merged with the
+ * networks measured before (each keeps its latest result).
  */
 export function estimate(file: string, builder: Builder, channel: string): Promise<SizeEstimate> {
     return exclusive('Estimate size', async () => {
         const resolved = requireExport(projectRoot(), file);
-        requireEstimate();
-        if (typeof channel !== 'string' || !channel.trim()) throw new Error('Pick the ad network to estimate');
-        const packing = `Packing for ${channel} (${builder}) on the server…`;
-        progress(`Sending ${path.basename(resolved)}…`, 0);
-        let response;
-        try {
-            response = await estimateSize(state.serverUrl, token(), builder, channel.trim(), resolved, (fraction) =>
-                fraction >= 0.99 ? progress(packing, null) : progress(`Sending ${path.basename(resolved)}… ${Math.round(fraction * 100)}%`, fraction),
-            );
-        } catch (error) {
-            return onApiError(error);
-        }
+        const option = networks()[builder].find((candidate) => candidate.channel === channel?.trim());
+        if (!channel?.trim()) throw new Error('Pick the ad network to estimate');
+        if (!option) throw new Error(`Unknown ${builder} network: ${channel}`);
+        progress(`Packing ${path.basename(resolved)} for ${option.label} (${builder})…`, null);
+        const measured = await measureInWorker(resolved, builder, option.channel);
         const at = new Date().toISOString();
-        const fresh: ChannelSize[] = response.channels.map((channel) => ({
-            channel: channel.channel,
-            label: channel.label,
-            format: channel.format,
-            bytes: channel.bytes,
-            maxBytes: channel.max_bytes,
-            withinLimit: channel.within_limit,
-            at,
-        }));
+        const fresh: ChannelSize[] = [
+            {
+                channel: measured.channel,
+                label: measured.label,
+                format: measured.format,
+                bytes: measured.bytes,
+                maxBytes: measured.maxBytes,
+                withinLimit: measured.maxBytes === null || measured.bytes <= measured.maxBytes,
+                at,
+            },
+        ];
         const before = readMeta(resolved).estimates?.[builder]?.channels ?? [];
         const merged = [...before.filter((old) => !fresh.some((channel) => channel.channel === old.channel)), ...fresh];
         const result: SizeEstimate = { builder, at, channels: merged };

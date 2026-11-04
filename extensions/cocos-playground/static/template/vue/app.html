@@ -219,7 +219,7 @@
                     </div>
                     <div class="pg-row-actions">
                         <button class="pg-mini primary" :disabled="!canUpload" :title="canUpload ? 'Upload to ' + selectedConcept.name : 'Sign in and choose a concept first'" @click="upload(item)">Upload</button>
-                        <button :class="['pg-mini', { active: ui.sizesOpen === item.file }]" title="Network sizes: the dashboard packs it for every ad network" @click="toggleSizes(item)">Sizes</button>
+                        <button :class="['pg-mini', { active: ui.sizesOpen === item.file }]" title="Network sizes: pack it for an ad network here and compare with the network's limit" @click="toggleSizes(item)">Sizes</button>
                         <button class="pg-mini pg-glyph" title="Show in folder" @click="reveal(item)">&#x1F4C2;</button>
                         <button :class="['pg-mini', ui.confirmDelete === item.file ? 'danger' : 'pg-glyph']" :disabled="busy" :title="ui.confirmDelete === item.file ? 'Click again to delete' : 'Delete this zip'" @click="remove(item)" @blur="ui.confirmDelete === item.file && (ui.confirmDelete = '')">{{ ui.confirmDelete === item.file ? 'Sure?' : '✕' }}</button>
                     </div>
@@ -229,7 +229,7 @@
                         <div class="pg-seg">
                             <button v-for="b in ['pnp', 'super-html']" :key="b" :class="{ active: ui.sizesBuilder === b }" @click="ui.sizesBuilder = b">{{ b }}</button>
                         </div>
-                        <template v-if="canEstimate && !ui.channelsError && channelsFor(ui.sizesBuilder).length">
+                        <template v-if="!ui.channelsError && channelsFor(ui.sizesBuilder).length">
                             <select class="pg-select pg-network" :value="chosenNetwork(ui.sizesBuilder)" title="The ad network to estimate (one at a time)" @change="chooseNetwork($event)">
                                 <option value="" disabled>Ad network&#x2026;</option>
                                 <option v-for="option in channelsFor(ui.sizesBuilder)" :key="option.channel" :value="option.channel">{{ option.label }}{{ option.maxBytes ? ' (≤ ' + formatBytes(option.maxBytes) + ')' : '' }}{{ resultOf(item, option.channel) ? (resultOf(item, option.channel).withinLimit ? '  ✓' : '  ✕') : '' }}</option>
@@ -237,8 +237,7 @@
                             <button class="pg-mini primary" :disabled="busy || !chosenNetwork(ui.sizesBuilder)" @click="estimate(item)">{{ resultOf(item, chosenNetwork(ui.sizesBuilder)) ? 'Estimate again' : 'Estimate' }}</button>
                         </template>
                     </div>
-                    <div v-if="!canEstimate" class="pg-empty pg-dim">{{ signedIn ? 'This server is too old to estimate sizes: it needs a newer next-playground.' : 'Sign in to estimate network sizes.' }}</div>
-                    <div v-else-if="ui.channelsError" class="pg-empty pg-error-text">{{ ui.channelsError }}</div>
+                    <div v-if="ui.channelsError" class="pg-empty pg-error-text">{{ ui.channelsError }}</div>
                     <div v-else-if="!channelsFor(ui.sizesBuilder).length" class="pg-empty pg-dim">Loading the networks&#x2026;</div>
                     <table v-else-if="resultsOf(item).length" class="pg-table">
                         <tr v-for="c in resultsOf(item)" :key="c.channel" :class="{ over: !c.withinLimit, chosen: c.channel === chosenNetwork(ui.sizesBuilder) }" :title="c.format + ', estimated ' + formatWhen(c.at)">
@@ -249,7 +248,7 @@
                             <td class="pg-mark">{{ c.withinLimit ? '✓' : '✕' }}</td>
                         </tr>
                     </table>
-                    <div v-else class="pg-empty pg-dim">No {{ ui.sizesBuilder }} network estimated yet. Choose one and press Estimate: the dashboard packs the zip for that network.</div>
+                    <div v-else class="pg-empty pg-dim">No {{ ui.sizesBuilder }} network estimated yet. Choose one and press Estimate: the zip is packed for that network right here, with the dashboard's own builder.</div>
                 </div>
             </div>
         </section>

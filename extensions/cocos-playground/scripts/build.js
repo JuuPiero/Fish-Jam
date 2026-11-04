@@ -24,6 +24,8 @@ const options = {
     entryPoints: {
         main: 'source/main.ts',
         'panels/default/index': 'source/panels/default/index.ts',
+        // Network sizes: the dashboard's builders, in a child process of the editor (connect/estimate.ts).
+        'estimate-worker': 'source/estimate-worker.ts',
     },
     outdir: dist,
     bundle: true,

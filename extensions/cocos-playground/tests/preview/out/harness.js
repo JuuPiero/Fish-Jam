@@ -19699,7 +19699,6 @@ ${codeFrame}` : message);
     });
     const signedIn = computed2(() => !!ui.panel?.account);
     const authOff = computed2(() => ui.panel?.server?.ok === true && !ui.panel.server.authEnabled);
-    const canEstimate = computed2(() => signedIn.value && ui.panel?.server?.ok === true && ui.panel.server.features.includes("estimate"));
     const selectedApp = computed2(() => ui.applications.find((app2) => app2.id === ui.panel?.selection.applicationId) ?? null);
     const selectedConcept = computed2(() => ui.concepts.find((concept) => concept.id === ui.panel?.selection.conceptId) ?? null);
     const busy = computed2(() => !!ui.panel?.busy || ui.working);
@@ -19929,7 +19928,7 @@ ${codeFrame}` : message);
             if (!item.estimates[ui.sizesBuilder] && item.estimates[ui.sizesBuilder === "pnp" ? "super-html" : "pnp"]) {
               ui.sizesBuilder = ui.sizesBuilder === "pnp" ? "super-html" : "pnp";
             }
-            if (!ui.channelOptions && canEstimate.value) {
+            if (!ui.channelOptions) {
               ui.channelsError = "";
               try {
                 ui.channelOptions = await bridge2.channels();
@@ -19996,7 +19995,6 @@ ${codeFrame}` : message);
           host,
           signedIn,
           authOff,
-          canEstimate,
           selectedApp,
           selectedConcept,
           busy,

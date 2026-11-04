@@ -97,7 +97,6 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
 
     const signedIn = computed(() => !!ui.panel?.account);
     const authOff = computed(() => ui.panel?.server?.ok === true && !ui.panel.server.authEnabled);
-    const canEstimate = computed(() => signedIn.value && ui.panel?.server?.ok === true && ui.panel.server.features.includes('estimate'));
     const selectedApp = computed(() => ui.applications.find((app) => app.id === ui.panel?.selection.applicationId) ?? null);
     const selectedConcept = computed(() => ui.concepts.find((concept) => concept.id === ui.panel?.selection.conceptId) ?? null);
     const busy = computed(() => !!ui.panel?.busy || ui.working);
@@ -337,7 +336,7 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                     if (!item.estimates[ui.sizesBuilder] && item.estimates[ui.sizesBuilder === 'pnp' ? 'super-html' : 'pnp']) {
                         ui.sizesBuilder = ui.sizesBuilder === 'pnp' ? 'super-html' : 'pnp';
                     }
-                    if (!ui.channelOptions && canEstimate.value) {
+                    if (!ui.channelOptions) {
                         ui.channelsError = '';
                         try {
                             ui.channelOptions = await bridge.channels();
@@ -406,7 +405,6 @@ export function createPlaygroundApp(el: HTMLElement, bridge: PlaygroundBridge, t
                 host,
                 signedIn,
                 authOff,
-                canEstimate,
                 selectedApp,
                 selectedConcept,
                 busy,

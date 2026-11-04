@@ -17,9 +17,13 @@
     "devDependencies": {
         "@cocos/creator-types": "^3.8.6",
         "@types/jszip": "^3.4.0",
+        "@types/mime-types": "^2.1.4",
         "@types/node": "^18.17.1",
+        "cheerio": "1.0.0-rc.12",
         "esbuild": "^0.28.2",
         "jszip": "^3.10.1",
+        "mime-types": "^2.1.35",
+        "playable-adapter-core": "file:vendor/playable-adapter-core-1.2.4-ikame.1.tgz",
         "typescript": "^5.8.2",
         "vue": "^3.3.4"
     },
