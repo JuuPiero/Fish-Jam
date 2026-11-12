@@ -1,0 +1,129 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "project-browser",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js"
+    },
+    "description": "i18n:project-browser.description",
+    "main": "./dist/main.js",
+    "dependencies": {
+        "vue": "^3.1.4"
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "panels": {
+        "project": {
+            "title": "Project",
+            "type": "dockable",
+            "main": "dist/panels/project.js",
+            "size": {
+                "min-width": 360,
+                "min-height": 200,
+                "width": 900,
+                "height": 360
+            }
+        }
+    },
+    "contributions": {
+        "profile": {
+            "project": {
+                "labels": {
+                    "default": {}
+                },
+                "favorites": {
+                    "default": []
+                }
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.panel",
+                "label": "i18n:project-browser.menu.project",
+                "message": "open-panel"
+            },
+            {
+                "path": "i18n:menu.extension/Project Browser",
+                "label": "i18n:project-browser.menu.project",
+                "message": "open-panel"
+            },
+            {
+                "path": "i18n:menu.extension/Project Browser",
+                "label": "i18n:project-browser.menu.clear_thumbs",
+                "message": "thumb-clear"
+            },
+            {
+                "path": "i18n:menu.extension/Project Browser",
+                "label": "i18n:project-browser.menu.docs",
+                "message": "open-docs"
+            }
+        ],
+        "messages": {
+            "open-panel": {
+                "methods": ["openPanel"]
+            },
+            "open-docs": {
+                "methods": ["openDocs"]
+            },
+            "thumb-get": {
+                "methods": ["thumbGet"]
+            },
+            "thumb-put": {
+                "methods": ["thumbPut"]
+            },
+            "thumb-clear": {
+                "methods": ["thumbClear"]
+            },
+            "show-in-explorer": {
+                "methods": ["showInExplorer"]
+            },
+            "copy-text": {
+                "methods": ["copyText"]
+            },
+            "get-store": {
+                "methods": ["getStore"]
+            },
+            "set-store": {
+                "methods": ["setStore"]
+            },
+            "reveal-in-assets": {
+                "methods": ["revealInAssets"]
+            },
+            "asset-db:ready": {
+                "methods": ["project.onAssetsChanged"]
+            },
+            "asset-db:asset-add": {
+                "methods": ["project.onAssetsChanged"]
+            },
+            "asset-db:asset-change": {
+                "methods": ["project.onAssetsChanged"]
+            },
+            "asset-db:asset-delete": {
+                "methods": ["project.onAssetsChanged"]
+            },
+            "project-browser:thumbs-cleared": {
+                "methods": ["project.onThumbsCleared"]
+            },
+            "selection:select": {
+                "methods": ["project.onSelectionChanged"]
+            },
+            "selection:unselect": {
+                "methods": ["project.onSelectionChanged"]
+            },
+            "ui-kit:touch-asset": {
+                "methods": ["project.onTouchAsset"]
+            }
+        }
+    }
+}

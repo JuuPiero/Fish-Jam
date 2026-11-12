@@ -322,7 +322,7 @@
     "_priority": 1,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 959.9999999999999,
+    "_orthoHeight": 960,
     "_near": 1,
     "_far": 2000,
     "_color": {
@@ -1766,8 +1766,8 @@
     },
     "spacing": 230,
     "count": 4,
-    "maxSameOrderInARow": 2,
     "relayoutDuration": 0.25,
+    "maxSameOrderInARow": 2,
     "orders": [],
     "_id": "132CoMdDNPAqMOlPtJMQAJ"
   },
@@ -5320,6 +5320,7 @@
       }
     ],
     "levelIndex": 5,
+    "diffCurveType": 2,
     "currentLevel": null,
     "orderManager": {
       "__id__": 65
@@ -5330,8 +5331,7 @@
     "bubbleManager": {
       "__id__": 152
     },
-    "_id": "e3HPdbLNFFvYdwfTatTE2P",
-    "diffCurveType": 2
+    "_id": "e3HPdbLNFFvYdwfTatTE2P"
   },
   {
     "__type__": "cc.Node",

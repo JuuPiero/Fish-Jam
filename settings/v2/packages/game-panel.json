@@ -1,0 +1,11 @@
+{
+  "__version__": "1.0.0",
+  "settings": {
+    "resolutionId": "r1170x2532",
+    "display": 0,
+    "quality": "high",
+    "previewWhenStopped": true,
+    "showStats": false,
+    "custom": []
+  }
+}
