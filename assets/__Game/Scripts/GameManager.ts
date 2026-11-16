@@ -247,7 +247,10 @@ export class GameManager extends Component {
             return;
         }
 
-        const activeOrders = orderManager.orders.filter(order => orderManager.isOrderInteractable(order));
+        // Every order on the belt counts, off-screen ones too: the belt carries them into reach,
+        // and a bench fish for one is pulled onto it when it arrives (ORDER_READY). So the board is
+        // stuck only when no fish the player can see matches anything still on the belt.
+        const activeOrders = orderManager.orders.filter(order => order.node.active);
         if (activeOrders.some(order => order.isBusy)) {
             return;
         }

@@ -79,6 +79,11 @@ export class Order extends Component {
         return this._isPoppingIn || this._claimedCount > this._deliveredCount;
     }
 
+    // Fish already in this bowl or flying to it.
+    get claimedCount(): number {
+        return this._claimedCount;
+    }
+
     get remainingCount(): number {
         return Math.max(0, this.requiredCount - this._claimedCount);
     }

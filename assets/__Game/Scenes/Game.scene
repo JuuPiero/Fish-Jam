@@ -490,6 +490,7 @@
     "instance": {
       "__id__": 13
     },
+    "targetOverrides": null,
     "nestedPrefabInstanceRoots": null
   },
   {
@@ -4413,7 +4414,6 @@
     "rightBorder": {
       "__id__": 65
     },
-    "topBorder": null,
     "bubbleGap": 4,
     "spawnColumns": 48,
     "maxBubblesOnScreen": 20,
@@ -4976,6 +4976,7 @@
     "instance": {
       "__id__": 243
     },
+    "targetOverrides": null,
     "nestedPrefabInstanceRoots": null
   },
   {

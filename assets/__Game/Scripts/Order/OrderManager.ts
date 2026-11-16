@@ -21,6 +21,9 @@ export class OrderManager extends Component {
     @property({ tooltip: 'Conveyor speed in units/second, travelling right to left.' })
     beltSpeed: number = 50;
 
+    @property({ tooltip: 'Speed in units/second at which the orders behind a removed one slide up to close its gap.' })
+    compactSpeed: number = 600;
+
     @property({ tooltip: 'Local X at which an order wraps back to the right side of the conveyor.' })
     beltLeftLimit: number = -717.217;
 
@@ -44,11 +47,9 @@ export class OrderManager extends Component {
     // Order ids still waiting for a visible slot to free up.
     private _queue: number[] = [];
 
-    // Orders that finished but had nowhere to go - every remaining queued id was already showing
-    // on another visible order at the time. Kept alive (as a child of orderContainer) but
-    // deactivated, so the game never shows two orders asking for the same fish id at once; a
-    // pending order gets reactivated and reset() once one of those duplicate ids frees up.
-    private _pendingOrders: Order[] = [];
+    // Belt distance each order still has to travel left, on top of the belt's own motion, to close
+    // the gap a removed order left in front of it.
+    private _compactShift = new Map<Order, number>();
 
     // --- DiffCurveType.Easy/Normal/Hard path below: reachability-aware picker. ---
 
@@ -112,7 +113,7 @@ export class OrderManager extends Component {
             child.destroy();
         }
         this.orders = [];
-        this._pendingOrders = [];
+        this._compactShift.clear();
         this._activeFlights = 0;
         this._beltEnabled = false;
         this.refreshInteractableBoundsIfViewportChanged();
@@ -167,19 +168,12 @@ export class OrderManager extends Component {
         }
 
         // Round-robin the order queue across distinct ids (id A, id B, id C, id A again, ...)
-        // instead of grouping every copy of the same id consecutively. That guarantees the
-        // FIRST pass through all qualifying ids - i.e. the first `distinctIdsWithOrders` entries
-        // - are all distinct, so capping the initial visible batch at that count (below) can
-        // never show the same id twice at once, even when a level has enough of one fish for
-        // multiple orders of it.
+        // instead of grouping every copy of the same id consecutively, so the belt mixes types.
+        // On the conveyor two orders may ask for the same id at once, so nothing caps the batch.
         const remainingOrdersForId = new Map<number, number>();
-        let distinctIdsWithOrders = 0;
         for (const id of idsInOrder) {
             const ordersForId = Math.floor((remainingCount.get(id) ?? 0) / OrderManager.FISH_PER_ORDER);
             remainingOrdersForId.set(id, ordersForId);
-            if (ordersForId > 0) {
-                distinctIdsWithOrders++;
-            }
         }
         const queue: number[] = [];
         let addedAny = true;
@@ -195,7 +189,7 @@ export class OrderManager extends Component {
             }
         }
 
-        const visibleCount = Math.min(this.count, distinctIdsWithOrders);
+        const visibleCount = Math.min(this.count, queue.length);
         this._queue = queue.slice(visibleCount);
 
         for (let i = 0; i < visibleCount; i++) {
@@ -214,29 +208,57 @@ export class OrderManager extends Component {
         // actual viewport size is more reliable across preview, web, and playable wrappers than
         // subscribing to a platform-specific resize event.
         this.refreshInteractableBoundsIfViewportChanged();
-        if (!this._beltEnabled || this.spacing <= 0 || this._activeFlights > 0) {
+        if (this.spacing <= 0 || this._activeFlights > 0) {
             return;
         }
-        const delta = this.beltSpeed * dt;
+        const beltDelta = this._beltEnabled ? this.beltSpeed * dt : 0;
+        const compactStep = this.compactSpeed * dt;
         for (const order of this.orders) {
             if (!order.node.active) {
                 continue;
             }
+            const shift = this._compactShift.get(order) ?? 0;
+            const step = Math.min(shift, compactStep);
+            if (shift - step <= 0) {
+                this._compactShift.delete(order);
+            } else {
+                this._compactShift.set(order, shift - step);
+            }
+            if (beltDelta === 0 && step === 0) {
+                continue;
+            }
+
             const position = order.node.position;
             const wasInteractable = this.isInInteractableArea(position.x);
-            let x = position.x - delta;
+            let x = position.x - beltDelta - step;
             if (x < this.beltLeftLimit) {
                 // Append directly after the rightmost live order instead of using a fixed belt
                 // length. This keeps the spacing seamless even if the designer moves the left
-                // wrap marker much farther off-screen.
+                // wrap marker much farther off-screen. The rightmost one may still be closing a
+                // gap, so its place once settled is what counts.
                 const rightmostX = Math.max(...this.orders
                     .filter(candidate => candidate !== order && candidate.node.active)
-                    .map(candidate => candidate.node.position.x));
+                    .map(candidate => candidate.node.position.x - (this._compactShift.get(candidate) ?? 0)));
                 x = Number.isFinite(rightmostX) ? rightmostX + this.spacing : this.interactableRight;
+                this._compactShift.delete(order);
             }
             order.node.setPosition(x, position.y, position.z);
             if (!wasInteractable && this.isInInteractableArea(x)) {
                 EventBus.emit(GameEvents.ORDER_READY, order);
+            }
+        }
+    }
+
+    // Removes a finished order with no next id from the belt, and has every order behind it (to its
+    // right, since the belt runs leftwards) slide one place up, so the belt stays one even row.
+    private removeFromBelt(order: Order, index: number): void {
+        const removedX = order.node.position.x;
+        this.orders.splice(index, 1);
+        this._compactShift.delete(order);
+        order.node.destroy();
+        for (const other of this.orders) {
+            if (other.node.active && other.node.position.x > removedX) {
+                this._compactShift.set(other, (this._compactShift.get(other) ?? 0) + this.spacing);
             }
         }
     }
@@ -294,13 +316,24 @@ export class OrderManager extends Component {
         this.updateInteractableBoundsFromCanvas();
     }
 
-    // The first order asking for this fish id that still has an unclaimed slot, if any. Checks
-    // isFullyClaimed (not isComplete) so a slot already promised to an in-flight fish can't
+    // The order a fish of this id goes to: of the reachable orders asking for it that still have an
+    // unclaimed slot, the one holding the most fish (in the bowl or flying there), so the bowl
+    // nearest completion fills first; a tie goes to the leftmost, the next to leave the screen.
+    // Checks isFullyClaimed (not isComplete) so a slot already promised to an in-flight fish can't
     // also get a second fish sent to it before the first one lands.
     findMatchingOrder(fishId: number): Order | null {
-        return this.orders.find(order =>
-            order.id === fishId && !order.isFullyClaimed && this.isOrderInteractable(order),
-        ) ?? null;
+        let best: Order | null = null;
+        for (const order of this.orders) {
+            if (order.id !== fishId || order.isFullyClaimed || !this.isOrderInteractable(order)) {
+                continue;
+            }
+            if (!best ||
+                order.claimedCount > best.claimedCount ||
+                (order.claimedCount === best.claimedCount && order.node.position.x < best.node.position.x)) {
+                best = order;
+            }
+        }
+        return best;
     }
 
     // Call once `order` has been fully delivered. Reuses its slot for the next fish id the level
@@ -329,82 +362,36 @@ export class OrderManager extends Component {
             return nextId;
         }
 
-        this.orders.splice(index, 1);
-        order.node.destroy();
+        this.removeFromBelt(order, index);
         return null;
     }
 
-    // Original duplicate-hiding completion flow - only reached when diffCurveType is None.
+    // Original queue completion flow - only reached when diffCurveType is None.
     private completeOrderClassic(order: Order, index: number): number | null {
-        const nextId = this.takeNextAvailableId(order);
-        if (nextId !== null) {
+        // The conveyor allows two orders of one id, so the next queued id always goes straight in.
+        const nextId = this._queue.shift();
+        if (nextId !== undefined) {
             order.reset(nextId);
-            // This order's old id just went away - that may be exactly what a hidden order was
-            // waiting on.
-            this.fillPendingOrders();
             return nextId;
         }
 
-        if (this._queue.length === 0) {
-            this.orders.splice(index, 1);
-            order.node.destroy();
-            return null;
-        }
-
-        // Every id still in the queue is already showing on another visible order right now -
-        // hide this slot instead of duplicating one of them; completeOrder() on whichever
-        // duplicate finishes first will free its id and pull this order back in via
-        // fillPendingOrders().
-        order.node.active = false;
-        this._pendingOrders.push(order);
+        this.removeFromBelt(order, index);
         return null;
-    }
-
-    // Removes and returns the first queued id not already shown by any OTHER currently visible
-    // (non-pending) order, or null if the queue is empty or every remaining id is a duplicate.
-    private takeNextAvailableId(excluding: Order): number | null {
-        const activeIds = new Set(
-            this.orders
-                .filter(candidate => candidate !== excluding && this._pendingOrders.indexOf(candidate) === -1)
-                .map(candidate => candidate.id),
-        );
-        for (let i = 0; i < this._queue.length; i++) {
-            if (!activeIds.has(this._queue[i])) {
-                return this._queue.splice(i, 1)[0];
-            }
-        }
-        return null;
-    }
-
-    // An id just freed up - see if any hidden order can finally be shown with something.
-    private fillPendingOrders() {
-        for (let i = this._pendingOrders.length - 1; i >= 0; i--) {
-            const pending = this._pendingOrders[i];
-            const nextId = this.takeNextAvailableId(pending);
-            if (nextId === null) {
-                continue;
-            }
-            this._pendingOrders.splice(i, 1);
-            pending.node.active = true;
-            pending.reset(nextId, undefined, true);
-        }
     }
 
     // Port of Unity's OrdersManager.PickNextOrderItemId, with the reachability requirement eased
-    // or dropped entirely depending on diffCurveType (see filterByReachability). Duplicate-avoidance
-    // and the same-id-run limit are resolved FIRST, before reachability even gets a say - otherwise
-    // a bubble that happens to be "ready to go" for id X could get X offered to two order slots at
-    // once (the first order claims X; the second slot's pick still sees that same bubble sitting
-    // there, since nothing is actually removed from it until the player pops it). Only once no
-    // other id can satisfy those two rules at all does a duplicate/overused id get allowed back in.
+    // or dropped entirely depending on diffCurveType (see filterByReachability). The same-id-run
+    // limit is resolved first, before reachability gets a say; only once no other id satisfies it
+    // does an overused id get allowed back in. Unity also kept two open orders from sharing an id;
+    // the conveyor drops that rule (two bowls of one fish on the belt is fine), and
+    // collectReachableCounts already subtracts what open orders still need, so a bubble is not
+    // counted twice for two orders of its fish.
     private pickNextOrderId(excluding: Order | null = null): number | null {
         if (this._pendingCounts.size === 0) {
             return null;
         }
 
         const ids = Array.from(this._pendingCounts.keys());
-        const notAlreadyOpen = (id: number) => !this.orders.some(order => order !== excluding && order.id === id);
-
         // Easy's whole point is always handing over the single easiest pick available. Enforcing
         // the run-limit there would fight that goal directly: once an abundant, bubble-complete id
         // wins the reachability check twice in a row, the run-limit would forcibly evict it in
@@ -413,10 +400,9 @@ export class OrderManager extends Component {
         // intentional part of the added challenge.
         const withinRunLimit = (id: number) =>
             id !== this._lastCreatedId || this._sameOrderRun < this.maxSameOrderInARow;
-        const dedupeRules = this._diffCurveType === DiffCurveType.Easy
-            ? [notAlreadyOpen]
-            : [withinRunLimit, notAlreadyOpen];
-        const idPool = this.filterByPriority(ids, dedupeRules);
+        const idPool = this._diffCurveType === DiffCurveType.Easy
+            ? ids
+            : this.filterByPriority(ids, [withinRunLimit]);
 
         const candidates = this.filterByReachability(idPool, excluding);
         if (candidates.length === 0) {

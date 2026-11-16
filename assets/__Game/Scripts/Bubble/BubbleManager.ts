@@ -26,9 +26,6 @@ export class BubbleManager extends Component {
     @property(Node) leftBorder: Node = null;
     @property(Node) rightBorder: Node = null;
 
-    @property({ tooltip: 'Optional ceiling border. If empty, the sibling node named TopBorder is used.' })
-    topBorder: Node = null;
-
     @property({ tooltip: 'Minimum free space between bubbles while arranging the opening batch.' })
     bubbleGap: number = 20;
 
@@ -94,8 +91,8 @@ export class BubbleManager extends Component {
             index++;
         }
 
-        // Unity's opening batch: pack as many bubbles as the board allows into the play zone
-        // right away, in one frame. Everything after stays queued - inactive, parented straight
+        // Unity's opening batch: pack as many bubbles as the board allows in one frame, below
+        // SpawnPos, and let them float up into the play zone. Everything after stays queued - inactive, parented straight
         // onto this.node so it survives past the staging node below - and trickles in later.
         const openingCount = Math.min(this._pendingBubbles.length, this.maxBubblesOnScreen);
         const opening = this._pendingBubbles.slice(0, openingCount);
@@ -232,12 +229,12 @@ export class BubbleManager extends Component {
         }
     }
 
-    // Packs a list of not-yet-placed bubbles from the top down: each one lands as high as it can
-    // in whichever lane the already-planned bubbles leave the most room. Once the visible tank is
-    // full, the same packing continues below SpawnPos - there is no Cocos mask there, so a bubble
-    // placed that deep is simply invisible until buoyancy carries it up.
+    // Packs the opening batch from SpawnPos downwards (SpawnPos sits at the bottom of the screen):
+    // each bubble lands as high as it can in whichever lane the already-planned ones leave the most
+    // room. The whole pack starts below the screen and buoyancy floats it up into the tank, keeping
+    // the same tidy arrangement it would have had if placed against the ceiling.
     private planBubbles(pendings: PendingBubble[]): PlannedBubble[] {
-        const top = this.getTopBorderY();
+        const top = this.spawnPosNode.worldPosition.y;
         const planned: PlannedBubble[] = [];
 
         for (const pending of pendings) {
@@ -295,13 +292,6 @@ export class BubbleManager extends Component {
         pending.node.setParent(this.node);
         pending.node.setWorldPosition(x, y, this.spawnPosNode.worldPosition.z);
         pending.node.active = true;
-    }
-
-    private getTopBorderY(): number {
-        const topBorder = this.topBorder ?? this.leftBorder.parent?.getChildByName('TopBorder');
-        // Game.scene already has TopBorder beside LeftBorder/RightBorder. The fallback keeps
-        // other scenes working until their optional Inspector reference is assigned.
-        return topBorder ? topBorder.worldPosition.y : this.spawnPosNode.worldPosition.y + 1200;
     }
 }
 
