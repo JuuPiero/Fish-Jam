@@ -201,7 +201,9 @@ export class GameManager extends Component {
 
         const order = orderManager.findMatchingOrder(fish.id);
         if (order) {
+            orderManager.beginFlight();
             fish.flyToOrder(order, this.flyLayer, () => {
+                orderManager.endFlight();
                 if (!order.isComplete) {
                     return;
                 }
@@ -245,7 +247,7 @@ export class GameManager extends Component {
             return;
         }
 
-        const activeOrders = orderManager.orders.filter(order => order.node.active);
+        const activeOrders = orderManager.orders.filter(order => orderManager.isOrderInteractable(order));
         if (activeOrders.some(order => order.isBusy)) {
             return;
         }

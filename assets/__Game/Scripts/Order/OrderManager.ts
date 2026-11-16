@@ -1,4 +1,4 @@
-import { _decorator, Component, instantiate, Node, Prefab, tween, Tween, Vec3 } from 'cc';
+import { _decorator, Canvas, Component, find, instantiate, Node, Prefab, screen, Vec3, view } from 'cc';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Order } from './Order';
@@ -15,10 +15,20 @@ const { ccclass, property } = _decorator;
 export class OrderManager extends Component {
     @property(Node) orderContainer: Node = null;
     @property spacing: number = 0;
-    @property count: number = 4;
+    @property({ tooltip: 'How many orders are kept on the conveyor, including those outside the visible area.' })
+    count: number = 10;
 
-    @property({tooltip: 'Seconds for the row to slide into its re-centered layout when the visible count changes'})
-    relayoutDuration: number = 0.25;
+    @property({ tooltip: 'Conveyor speed in units/second, travelling right to left.' })
+    beltSpeed: number = 50;
+
+    @property({ tooltip: 'Local X at which an order wraps back to the right side of the conveyor.' })
+    beltLeftLimit: number = -717.217;
+
+    @property({ tooltip: "Left edge of the area where orders take fish, in OrderContainer local X. Follows the screen's left edge at runtime (resize, rotation); this value is only the fallback when the Canvas camera cannot be read." })
+    interactableLeft: number = -559.186;
+
+    @property({ tooltip: "Right edge of the area where orders take fish, in OrderContainer local X. Follows the screen's right edge at runtime (resize, rotation); this value is only the fallback when the Canvas camera cannot be read." })
+    interactableRight: number = 547.03;
 
     @property({ tooltip: 'Only applies when LevelManager.diffCurveType is not None - caps how many times in a row the same fish id can be (re)assigned to a freed order slot.' })
     maxSameOrderInARow: number = 2;
@@ -51,10 +61,50 @@ export class OrderManager extends Component {
     private _slotManager: SlotManager | null = null;
     private _diffCurveType: DiffCurveType = DiffCurveType.None;
 
-    // Tracks each order's own in-flight relayout slide, if any, so a new one can stop just that
-    // tween - Order's own node also carries its pop-in scale/shake tweens, and Tween.stopAllByTarget
-    // would wrongly cancel those too if a relayout happens to land while one is still playing.
-    private _relayoutTweens = new Map<Order, Tween<Node>>();
+    private _activeFlights = 0;
+    private _beltEnabled = false;
+    private _lastViewportWidth = -1;
+    private _lastViewportHeight = -1;
+    // Frames left in which the screen-edge bounds are recomputed. A resize or rotation is followed
+    // by the Canvas re-fitting its camera and the Widgets re-aligning OrderContainer, in handlers
+    // and director phases whose order against ours is not fixed, so one read right at the event
+    // can still see the old layout. Reading for a few frames after it always ends on the settled one.
+    private static readonly BOUNDS_SETTLE_FRAMES = 3;
+    private _boundsFramesLeft = OrderManager.BOUNDS_SETTLE_FRAMES;
+
+    protected onEnable(): void {
+        EventBus.on(GameEvents.FISH_CLICKED, this.enableBelt);
+        screen.on('window-resize', this.onViewportChanged, this);
+        screen.on('orientation-change', this.onViewportChanged, this);
+        screen.on('fullscreen-change', this.onViewportChanged, this);
+        view.on('canvas-resize', this.onViewportChanged, this);
+        this.onViewportChanged();
+    }
+
+    protected onDisable(): void {
+        EventBus.off(GameEvents.FISH_CLICKED, this.enableBelt);
+        screen.off('window-resize', this.onViewportChanged, this);
+        screen.off('orientation-change', this.onViewportChanged, this);
+        screen.off('fullscreen-change', this.onViewportChanged, this);
+        view.off('canvas-resize', this.onViewportChanged, this);
+    }
+
+    private onViewportChanged(): void {
+        this._boundsFramesLeft = OrderManager.BOUNDS_SETTLE_FRAMES;
+        this.updateInteractableBoundsFromCanvas();
+    }
+
+    private enableBelt = (): void => {
+        this._beltEnabled = true;
+    };
+
+    beginFlight(): void {
+        this._activeFlights++;
+    }
+
+    endFlight(): void {
+        this._activeFlights = Math.max(0, this._activeFlights - 1);
+    }
 
     initialize(levelData: LevelData, bubbleManager?: BubbleManager, slotManager?: SlotManager, diffCurveType: DiffCurveType = DiffCurveType.None) {
         for (const child of this.orderContainer.children.slice()) {
@@ -63,7 +113,9 @@ export class OrderManager extends Component {
         }
         this.orders = [];
         this._pendingOrders = [];
-        this._relayoutTweens.clear();
+        this._activeFlights = 0;
+        this._beltEnabled = false;
+        this.refreshInteractableBoundsIfViewportChanged();
         this._bubbleManager = bubbleManager ?? null;
         this._slotManager = slotManager ?? null;
         this._diffCurveType = diffCurveType;
@@ -85,11 +137,10 @@ export class OrderManager extends Component {
         }
 
         for (let slotIndex = 0; slotIndex < this.count; slotIndex++) {
-            if (!this.createOrder(orderPrefab)) {
+            if (!this.createOrder(orderPrefab, this.beltLeftLimit + slotIndex * this.spacing)) {
                 break;
             }
         }
-        this.relayoutOrders(false);
     }
 
     // Original round-robin queue setup - only reached when diffCurveType is None, kept exactly as
@@ -150,22 +201,106 @@ export class OrderManager extends Component {
         for (let i = 0; i < visibleCount; i++) {
             const orderNode = instantiate(orderPrefab);
             orderNode.setParent(this.orderContainer);
+            orderNode.setPosition(this.beltLeftLimit + i * this.spacing, 0, 0);
 
             const order = orderNode.getComponent(Order);
             order.initialize(queue[i]);
             this.orders.push(order);
         }
-        // Snap straight to a centered row sized for however many orders actually spawned, rather
-        // than always assuming `count` slots - a level with fewer distinct ids than `count` just
-        // shows a shorter, still-centered row instead of a left-shifted partial one.
-        this.relayoutOrders(false);
+    }
+
+    update(dt: number): void {
+        // Covers rotation, browser resize, and any runtime aspect-ratio change. Checking the
+        // actual viewport size is more reliable across preview, web, and playable wrappers than
+        // subscribing to a platform-specific resize event.
+        this.refreshInteractableBoundsIfViewportChanged();
+        if (!this._beltEnabled || this.spacing <= 0 || this._activeFlights > 0) {
+            return;
+        }
+        const delta = this.beltSpeed * dt;
+        for (const order of this.orders) {
+            if (!order.node.active) {
+                continue;
+            }
+            const position = order.node.position;
+            const wasInteractable = this.isInInteractableArea(position.x);
+            let x = position.x - delta;
+            if (x < this.beltLeftLimit) {
+                // Append directly after the rightmost live order instead of using a fixed belt
+                // length. This keeps the spacing seamless even if the designer moves the left
+                // wrap marker much farther off-screen.
+                const rightmostX = Math.max(...this.orders
+                    .filter(candidate => candidate !== order && candidate.node.active)
+                    .map(candidate => candidate.node.position.x));
+                x = Number.isFinite(rightmostX) ? rightmostX + this.spacing : this.interactableRight;
+            }
+            order.node.setPosition(x, position.y, position.z);
+            if (!wasInteractable && this.isInInteractableArea(x)) {
+                EventBus.emit(GameEvents.ORDER_READY, order);
+            }
+        }
+    }
+
+    isOrderInteractable(order: Order): boolean {
+        return order.node.active && this.isInInteractableArea(order.node.position.x);
+    }
+
+    private isInInteractableArea(x: number): boolean {
+        return x >= this.interactableLeft && x <= this.interactableRight;
+    }
+
+    // Orders can only receive fish while actually visible: the bounds are the screen's left and
+    // right edges, read off the Canvas camera (centre +- orthoHeight x aspect) and turned into
+    // OrderContainer local X. The camera's own aspect is used, not screen pixels, so a device
+    // pixel ratio or a playable wrapper's letterboxing cannot skew it.
+    private updateInteractableBoundsFromCanvas(): void {
+        const camera = find('Canvas')?.getComponent(Canvas)?.cameraComponent;
+        const renderCamera = camera?.camera;
+        if (!camera || !renderCamera || renderCamera.height <= 0) {
+            return;
+        }
+
+        const halfWidth = camera.orthoHeight * (renderCamera.width / renderCamera.height);
+        const center = camera.node.worldPosition;
+        const leftLocal = new Vec3();
+        const rightLocal = new Vec3();
+        this.orderContainer.inverseTransformPoint(leftLocal, new Vec3(center.x - halfWidth, center.y, 0));
+        this.orderContainer.inverseTransformPoint(rightLocal, new Vec3(center.x + halfWidth, center.y, 0));
+        const wasInteractable = this.orders.map(order => this.isOrderInteractable(order));
+        this.interactableLeft = Math.min(leftLocal.x, rightLocal.x);
+        this.interactableRight = Math.max(leftLocal.x, rightLocal.x);
+        // A wider screen can bring a standing order into reach without the belt moving it, so it
+        // gets the same ORDER_READY a belt-carried one gets on entering (bench fish move onto it).
+        this.orders.forEach((order, index) => {
+            if (!wasInteractable[index] && this.isOrderInteractable(order)) {
+                EventBus.emit(GameEvents.ORDER_READY, order);
+            }
+        });
+    }
+
+    // Events cover rotation, resize and fullscreen; the window-size poll catches a wrapper that
+    // resizes its canvas without firing any of them. Either one restarts the settle frames.
+    private refreshInteractableBoundsIfViewportChanged(): void {
+        const viewport = screen.windowSize;
+        if (viewport.width !== this._lastViewportWidth || viewport.height !== this._lastViewportHeight) {
+            this._lastViewportWidth = viewport.width;
+            this._lastViewportHeight = viewport.height;
+            this._boundsFramesLeft = OrderManager.BOUNDS_SETTLE_FRAMES;
+        }
+        if (this._boundsFramesLeft <= 0) {
+            return;
+        }
+        this._boundsFramesLeft--;
+        this.updateInteractableBoundsFromCanvas();
     }
 
     // The first order asking for this fish id that still has an unclaimed slot, if any. Checks
     // isFullyClaimed (not isComplete) so a slot already promised to an in-flight fish can't
     // also get a second fish sent to it before the first one lands.
     findMatchingOrder(fishId: number): Order | null {
-        return this.orders.find(order => order.id === fishId && !order.isFullyClaimed) ?? null;
+        return this.orders.find(order =>
+            order.id === fishId && !order.isFullyClaimed && this.isOrderInteractable(order),
+        ) ?? null;
     }
 
     // Call once `order` has been fully delivered. Reuses its slot for the next fish id the level
@@ -195,9 +330,7 @@ export class OrderManager extends Component {
         }
 
         this.orders.splice(index, 1);
-        this._relayoutTweens.delete(order);
         order.node.destroy();
-        this.relayoutOrders(true);
         return null;
     }
 
@@ -214,11 +347,7 @@ export class OrderManager extends Component {
 
         if (this._queue.length === 0) {
             this.orders.splice(index, 1);
-            this._relayoutTweens.delete(order);
             order.node.destroy();
-            // One fewer order left for the rest of the level - slide the remaining ones back
-            // into a centered row instead of leaving a gap where this one used to be.
-            this.relayoutOrders(true);
             return null;
         }
 
@@ -228,7 +357,6 @@ export class OrderManager extends Component {
         // fillPendingOrders().
         order.node.active = false;
         this._pendingOrders.push(order);
-        this.relayoutOrders(true);
         return null;
     }
 
@@ -250,7 +378,6 @@ export class OrderManager extends Component {
 
     // An id just freed up - see if any hidden order can finally be shown with something.
     private fillPendingOrders() {
-        let filledAny = false;
         for (let i = this._pendingOrders.length - 1; i >= 0; i--) {
             const pending = this._pendingOrders[i];
             const nextId = this.takeNextAvailableId(pending);
@@ -260,10 +387,6 @@ export class OrderManager extends Component {
             this._pendingOrders.splice(i, 1);
             pending.node.active = true;
             pending.reset(nextId, undefined, true);
-            filledAny = true;
-        }
-        if (filledAny) {
-            this.relayoutOrders(true);
         }
     }
 
@@ -368,7 +491,7 @@ export class OrderManager extends Component {
         return instantWin.length > 0 ? instantWin : maxReachableAmong(reachable);
     }
 
-    private createOrder(orderPrefab: Prefab): boolean {
+    private createOrder(orderPrefab: Prefab, x: number): boolean {
         const id = this.pickNextOrderId();
         if (id === null) {
             return false;
@@ -377,6 +500,7 @@ export class OrderManager extends Component {
         const requiredCount = this.reserveOrderFish(id);
         const orderNode = instantiate(orderPrefab);
         orderNode.setParent(this.orderContainer);
+        orderNode.setPosition(x, 0, 0);
 
         const order = orderNode.getComponent(Order);
         if (!order) {
@@ -437,26 +561,4 @@ export class OrderManager extends Component {
         this._lastCreatedId = id;
     }
 
-    // Slides every currently visible order into a horizontally centered row, sized for however
-    // many are actually visible right now (active orders minus hidden/pending ones) instead of
-    // always assuming `count` slots - keeps the row centered as orders get destroyed near the
-    // end of a level, or hidden/reactivated while waiting out a duplicate id.
-    private relayoutOrders(animate: boolean) {
-        const visible = this.orders.filter(order => order.node.active);
-        const startX = -(visible.length - 1) * this.spacing * 0.5;
-        visible.forEach((order, i) => {
-            const targetX = startX + i * this.spacing;
-            this._relayoutTweens.get(order)?.stop();
-            if (animate) {
-                const slide = tween(order.node)
-                    .to(this.relayoutDuration, { position: new Vec3(targetX, 0, 0) }, { easing: 'quadOut' })
-                    .call(() => { this._relayoutTweens.delete(order); })
-                    .start();
-                this._relayoutTweens.set(order, slide);
-            } else {
-                this._relayoutTweens.delete(order);
-                order.node.setPosition(targetX, 0, 0);
-            }
-        });
-    }
 }
