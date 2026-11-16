@@ -1,0 +1,94 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "console-pro",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc --noEmit && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc --noEmit",
+        "test": "node ./tests/run.js",
+        "smoke": "node ./tests/smoke/run.js"
+    },
+    "description": "i18n:console-pro.description",
+    "main": "./dist/main.js",
+    "dependencies": {
+        "vue": "^3.1.4"
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "panels": {
+        "console": {
+            "title": "Console Pro",
+            "type": "dockable",
+            "main": "dist/panels/console.js",
+            "size": {
+                "min-width": 360,
+                "min-height": 160,
+                "width": 900,
+                "height": 420
+            }
+        }
+    },
+    "contributions": {
+        "scene": {
+            "script": "./dist/scene.js"
+        },
+        "profile": {
+            "editor": {
+                "errorPause": {
+                    "default": false
+                },
+                "clearOnPlay": {
+                    "default": false
+                },
+                "capacity": {
+                    "default": 50000
+                },
+                "sceneHook": {
+                    "default": true
+                }
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.panel",
+                "label": "i18n:console-pro.menu.open",
+                "message": "open-panel"
+            },
+            {
+                "path": "i18n:menu.extension",
+                "label": "i18n:console-pro.menu.open",
+                "message": "open-panel"
+            }
+        ],
+        "messages": {
+            "open-panel": { "methods": ["openPanel"] },
+            "open-docs": { "methods": ["openDocs"] },
+            "open-cocos-console": { "methods": ["openCocosConsole"] },
+            "query-logs": { "methods": ["queryLogs"] },
+            "clear": { "methods": ["clear"] },
+            "get-config": { "methods": ["getConfig"] },
+            "set-config": { "methods": ["setConfig"] },
+            "resolve-frames": { "methods": ["resolveFrames"] },
+            "open-location": { "methods": ["openLocation"] },
+            "copy-text": { "methods": ["copyText"] },
+            "export-text": { "methods": ["exportText"] },
+            "scene-events": { "methods": ["sceneEvents"] },
+            "status": { "methods": ["status"] },
+            "scene:preview-stop": { "methods": ["onPreviewStop"] },
+            "console-pro:entries": { "methods": ["console.onEntries"] },
+            "console-pro:retag": { "methods": ["console.onRetag"] },
+            "console-pro:cleared": { "methods": ["console.onCleared"] },
+            "console-pro:play-state": { "methods": ["console.onPlayState"] },
+            "console-pro:config": { "methods": ["console.onConfig"] }
+        }
+    }
+}

@@ -24193,6 +24193,80 @@ function sharedColor(store, uuids) {
   return c === void 0 ? "" : c;
 }
 
+// source/shared/package.ts
+function baseName(p) {
+  return p.slice(p.lastIndexOf("/") + 1);
+}
+function isInside(file, dir) {
+  let norm = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase(), f = norm(file), d = norm(dir);
+  return !!d && (f === d || f.indexOf(d + "/") === 0);
+}
+function actionLabel(action, status) {
+  switch (action) {
+    case "import":
+      return "Import";
+    case "skip":
+      return "Skip";
+    case "overwrite":
+      return status === "moved" ? "Overwrite it where it is" : status === "taken" ? "Replace the file there" : "Overwrite";
+    case "copy":
+      return "Import as a copy (new uuid)";
+    case "rename":
+      return "Import renamed (keep uuid)";
+  }
+  return action;
+}
+function statusLabel(status) {
+  switch (status) {
+    case "new":
+      return "New";
+    case "identical":
+      return "Identical";
+    case "changed":
+      return "Changed";
+    case "moved":
+      return "UUID used elsewhere";
+    case "taken":
+      return "Path taken";
+    case "folder-exists":
+      return "";
+    case "folder-new":
+      return "New";
+  }
+  return status;
+}
+function treeRows(rows) {
+  let list = rows.filter((r) => !!r.target).map((r) => Object.assign({}, r, { path_: r.target }));
+  return list.sort((a, b) => {
+    let x = a.path_.split("/"), y = b.path_.split("/");
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      if (x[i] === y[i]) continue;
+      let xd = i < x.length - 1 || a.isDirectory, yd = i < y.length - 1 || b.isDirectory;
+      return xd !== yd ? xd ? -1 : 1 : x[i].localeCompare(y[i], void 0, { numeric: !0, sensitivity: "base" });
+    }
+    return x.length - y.length;
+  }), list.map((r) => {
+    let o = Object.assign({}, r, { depth: r.path_.split("/").length - 2, name: baseName(r.path_) });
+    return delete o.path_, o;
+  });
+}
+function rowsUnder(rows, folderTarget) {
+  return rows.filter((r) => !!r.target && r.target.indexOf(folderTarget + "/") === 0);
+}
+function osDragMode(alt, shift) {
+  return alt ? shift ? "package" : "files" : "none";
+}
+function osDragFiles(list, fileOf) {
+  let files = [], key = (p) => p.replace(/\\/g, "/").toLowerCase();
+  for (let i = 0; i < list.length; i++) {
+    let a = list[i];
+    if (!a || a.uuid.indexOf("pkg:") === 0 || a.uuid.indexOf("new:") === 0) continue;
+    let f = a.parent ? fileOf(a.parent) : a.file || fileOf(a.uuid);
+    f && (files.some((x) => key(x) === key(f)) || files.push(f));
+  }
+  return files.filter((f) => !files.some((d) => d !== f && isInside(f, d)));
+}
+
 // source/panels/icons.ts
 function svg(body) {
   return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' + body + "</svg>";
@@ -24546,6 +24620,35 @@ var STYLE = (
   background: var(--color-normal-contrast-emphasis, #999); border: 1px solid var(--color-normal-border, #050505); box-sizing: border-box; transition: background 0.1s; }
 .pb-status input[type=range]:hover::-webkit-slider-thumb { background: var(--color-normal-contrast, #ccc); }
 .pb-status input[type=range]:active::-webkit-slider-thumb, .pb-status input[type=range]:focus-visible::-webkit-slider-thumb { background: var(--color-focus-fill-emphasis, var(--color-focus-fill, #3a79bb)); }
+.pb-status .path.hint { color: var(--color-normal-contrast, #ccc); }
+
+/* Import Asset Package / Export Package dialogs (inside the panel) */
+.pb-modal-back { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+.pb-modal { display: flex; flex-direction: column; box-sizing: border-box; width: min(620px, calc(100% - 24px)); height: calc(100% - 24px); max-height: 560px; min-height: 0; padding: 8px 10px;
+  background: var(--color-normal-fill, #2b2b2b); border: 1px solid var(--color-normal-border, #111); border-radius: 3px; user-select: none; }
+.pb-modal-title { flex: none; font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+.pb-modal-sub { flex: none; color: var(--color-normal-contrast-emphasis, #999); line-height: 16px; }
+.pb-modal-path { flex: none; margin-top: 2px; color: var(--color-normal-contrast-emphasis, #999); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.pb-modal-opts { flex: none; display: flex; align-items: center; gap: 12px; margin: 6px 0; flex-wrap: wrap; }
+.pb-modal-opts .lbl { color: var(--color-normal-contrast-emphasis, #999); }
+.pb-modal-opts label, .pb-modal-foot label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.pb-modal-list { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--color-normal-border, #111); background: var(--color-normal-fill-important, #1f1f1f); padding: 2px 0; }
+.pb-pkg-row { display: flex; align-items: center; gap: 5px; height: 20px; padding-right: 6px; white-space: nowrap; }
+.pb-pkg-row:hover { background: var(--color-hover-fill-emphasis, #2b2b2b); }
+.pb-pkg-row.off .nm, .pb-pkg-row.off .ico { opacity: 0.45; }
+.pb-pkg-row.dir .nm { font-weight: bold; }
+.pb-pkg-row input[type=checkbox] { margin: 0; flex: none; }
+.pb-pkg-row .ico { width: 16px; height: 16px; flex: none; display: flex; align-items: center; justify-content: center; }
+.pb-pkg-row .ico svg { width: 16px; height: 16px; display: block; }
+.pb-pkg-row .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pb-pkg-row .tag { flex: none; font-size: 10px; padding: 0 4px; line-height: 14px; border-radius: 2px; color: var(--color-normal-contrast-emphasis, #999); border: 1px solid var(--color-normal-border, #111); }
+.pb-pkg-row .st { flex: none; font-size: 11px; color: var(--color-normal-contrast-emphasis, #999); }
+.pb-pkg-row .st.new, .pb-pkg-row .st.folder-new { color: var(--color-success-fill, #4c9a4c); }
+.pb-pkg-row .st.changed, .pb-pkg-row .st.moved, .pb-pkg-row .st.taken { color: var(--color-warn-fill, #c99a2e); }
+.pb-pkg-row select { flex: none; max-width: 200px; height: 18px; font-size: 11px; color: var(--color-normal-contrast, #ccc); background: var(--color-default-fill, #3d3d3d); border: 1px solid var(--color-default-border, #3d3d3d); border-radius: 2px; outline: none; }
+.pb-modal-error { flex: none; margin-top: 4px; color: var(--color-danger-fill, #d05050); user-select: text; }
+.pb-modal-foot { flex: none; display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.pb-modal-foot .sum { color: var(--color-normal-contrast-emphasis, #999); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-chip { display: inline-block; padding: 0 5px; margin-left: 4px; border-radius: 7px; font-size: 10px; line-height: 14px; background: var(--color-normal-fill-weaker, #3d3d3d); }
 `
 );
@@ -24554,7 +24657,7 @@ var STYLE = (
 var TEMPLATE = (
   /* html */
   `
-<div class="pb" tabindex="0" @keydown="onKey" @mousedown="closeMenus($event)" @dragleave="rootDragLeave($event)"
+<div class="pb" tabindex="0" @keydown="onKey" @mousedown="closeMenus($event)" @mousemove="trackMods($event)" @dragleave="rootDragLeave($event)"
      @dragover.capture="logDragOver($event)" @drop.capture="logDrop($event)">
   <div class="pb-toolbar">
     <button class="pb-btn" @click="createMenu($event)" :disabled="readonlyFolder" title="Create an asset in the current folder">Create \u25BE</button>
@@ -24667,7 +24770,7 @@ var TEMPLATE = (
       </div>
 
       <div class="pb-status">
-        <span class="path" :title="statusPath">{{ statusPath }}</span>
+        <span class="path" :class="{ hint: !!notice || mods.alt }" :title="statusText">{{ statusText }}</span>
         <span v-for="l in selectedLabels" :key="l" class="pb-chip">{{ l }}</span>
         <div class="pb-drop">
           <button class="pb-btn icon" :disabled="!selection.length || selectionReadonly" @click.stop="toggleMenu('labels', $event)" title="Labels of the selected assets">
@@ -24694,6 +24797,70 @@ var TEMPLATE = (
     <div class="pb-colorpick-row end">
       <button class="pb-btn" @click="colorPick = null">Cancel</button>
       <button class="pb-btn primary" @click="applyColorPick()">Apply</button>
+    </div>
+  </div>
+
+  <!-- Import Asset Package (like Unity's Import Unity Package window) -->
+  <div class="pb-modal-back" v-if="importDlg" @mousedown.self.stop @contextmenu.prevent.stop @dragover.stop @drop.stop.prevent>
+    <div class="pb-modal pb-import" @mousedown.stop>
+      <div class="pb-modal-title">Import Asset Package</div>
+      <div class="pb-modal-sub">
+        From <b>{{ importDlg.info.project }}</b><template v-if="importDlg.info.creator"> (Cocos {{ importDlg.info.creator }})</template>,
+        {{ importDlg.info.count }} asset{{ importDlg.info.count === 1 ? '' : 's' }}<template v-if="importDlg.info.kind === 'loose'">. No asset-package.json: uuids come from the .meta files</template>.
+      </div>
+      <div class="pb-modal-path" :title="importDlg.info.path">{{ importDlg.info.path }}</div>
+      <div class="pb-modal-opts">
+        <span class="lbl">Import to</span>
+        <label><input type="radio" name="pb-import-mode" :checked="importDlg.mode === 'original'" @change="setImportMode('original')"> Original paths</label>
+        <label :title="importDlg.folderUrl"><input type="radio" name="pb-import-mode" :checked="importDlg.mode === 'folder'" @change="setImportMode('folder')"> Under '{{ folderTitle(importDlg.folderUrl) }}'</label>
+      </div>
+      <div class="pb-modal-list">
+        <div v-if="importDlg.busy && !importDlg.rows.length" class="pb-menu-note">Reading the package...</div>
+        <div v-for="r in importRows" :key="r.path" class="pb-pkg-row" :class="{ off: r.checked === false, dir: r.isDirectory }" :style="{ paddingLeft: (6 + r.depth * 14) + 'px' }">
+          <input type="checkbox" :checked="r.checked === true" :indeterminate.prop="r.checked === null" :disabled="!r.isDirectory && r.actions.length < 2" @change="toggleImportRow(r)">
+          <span class="ico" v-html="pkgIcon(r)"></span>
+          <span class="nm" :title="r.target">{{ r.name }}</span>
+          <span class="tag" v-if="r.dependency">dependency</span>
+          <span class="tag" v-if="!r.isDirectory && !r.hasMeta" title="No .meta file: Cocos gives it a new uuid">no meta</span>
+          <span class="st" :class="r.status" v-if="r.statusText" :title="statusTitle(r)">{{ r.statusText }}</span>
+          <select v-if="r.conflict || r.status === 'identical'" :value="r.actionNow" @change="setImportAction(r, $event.target.value)" :title="statusTitle(r)">
+            <option v-for="c in r.choices" :key="c.value" :value="c.value">{{ c.label }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="pb-modal-error" v-if="importDlg.error">{{ importDlg.error }}</div>
+      <div class="pb-modal-foot">
+        <button class="pb-btn" @click="importAll(true)">All</button>
+        <button class="pb-btn" @click="importAll(false)">None</button>
+        <span class="pb-grow sum">{{ importSummary }}</span>
+        <button class="pb-btn" @click="closeImport()">Cancel</button>
+        <button class="pb-btn primary" :disabled="importDlg.busy" @click="runImport()">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Package (Unity's Export Package: the selection and its dependencies) -->
+  <div class="pb-modal-back" v-if="exportDlg" @mousedown.self.stop @contextmenu.prevent.stop @dragover.stop @drop.stop.prevent>
+    <div class="pb-modal pb-export" @mousedown.stop>
+      <div class="pb-modal-title">Export Package</div>
+      <div class="pb-modal-sub">The selected assets and what they use, with their .meta files (uuids kept). Cocos Internal and extension assets are left out.</div>
+      <div class="pb-modal-list">
+        <div v-if="exportDlg.busy && !exportDlg.rows.length" class="pb-menu-note">Collecting dependencies...</div>
+        <div v-for="r in exportDlg.rows" :key="r.uuid" class="pb-pkg-row" :class="{ off: !exportDlg.checked[r.uuid], dir: r.isDirectory }" :style="{ paddingLeft: (6 + r.depth * 14) + 'px' }">
+          <input type="checkbox" :checked="!!exportDlg.checked[r.uuid]" @change="toggleExportRow(r)">
+          <span class="ico" v-html="pkgIcon(r)"></span>
+          <span class="nm" :title="r.path">{{ r.name }}</span>
+          <span class="tag" v-if="r.dependency">dependency</span>
+        </div>
+      </div>
+      <div class="pb-modal-error" v-if="exportDlg.error">{{ exportDlg.error }}</div>
+      <div class="pb-modal-foot">
+        <label><input type="checkbox" :checked="exportDlg.includeDeps" @change="setIncludeDeps($event.target.checked)"> Include dependencies</label>
+        <span class="pb-grow sum">{{ exportCount }} asset{{ exportCount === 1 ? '' : 's' }}</span>
+        <button class="pb-btn" @click="exportDlg = null">Cancel</button>
+        <button class="pb-btn" :disabled="exportDlg.busy || !exportCount" @click="runExport(false)" title="A folder with asset-package.json, assets/ and the .meta files">Export Folder...</button>
+        <button class="pb-btn primary" :disabled="exportDlg.busy || !exportCount" @click="runExport(true)" title="The same folder as a .zip">Export .zip...</button>
+      </div>
     </div>
   </div>
 </div>
@@ -24976,7 +25143,11 @@ var PKG2 = "project-browser", UI_KEY = "project-browser.ui", LIMIT = 5e3, BUILTI
   { label: "All Scenes", query: "t:Scene", builtin: !0 },
   { label: "All Scripts", query: "t:Script", builtin: !0 },
   { label: "All Textures", query: "t:Texture", builtin: !0 }
-], pendingSeq = 0, hookModules = {};
+], pendingSeq = 0, pendingClickUp = null;
+function cancelClickSelect() {
+  pendingClickUp && document.removeEventListener("mouseup", pendingClickUp, !0), pendingClickUp = null;
+}
+var hookModules = {};
 function loadHookModule(file) {
   let fs = require("fs"), mtime = 0;
   try {
@@ -24992,6 +25163,19 @@ function loadHookModule(file) {
   }
   let mod = require(file);
   return hookModules[file] = { mtime, mod }, mod;
+}
+function findMenuItem(items, match) {
+  for (let i = 0; i < (items || []).length; i++) {
+    let it = items[i];
+    if (it) {
+      if (it.label && match(i18n(String(it.label)))) return it;
+      if (Array.isArray(it.submenu)) {
+        let f = findMenuItem(it.submenu, match);
+        if (f) return f;
+      }
+    }
+  }
+  return null;
 }
 function mascotUrl(name = "hiding.png") {
   try {
@@ -25019,6 +25203,36 @@ async function saveStore(key, value) {
   } catch (e) {
     console.warn("[Project Browser] Could not save " + key + ":", e);
   }
+}
+var OS_DRAG_CHANNEL = "project-browser:start-os-drag";
+function sendOsDrag(payload) {
+  let plain = JSON.parse(JSON.stringify(payload));
+  try {
+    let ipc = require("electron").ipcRenderer;
+    if (ipc && typeof ipc.send == "function") {
+      ipc.send(OS_DRAG_CHANNEL, plain);
+      return;
+    }
+  } catch {
+  }
+  try {
+    Editor.Message.send(PKG2, "start-os-drag", plain);
+  } catch (e) {
+    console.warn("[Project Browser] Could not start the drag:", e);
+  }
+}
+function mainUuids(list) {
+  let out = [];
+  for (let i = 0; i < list.length; i++) {
+    let u = list[i].parent || list[i].uuid;
+    out.indexOf(u) < 0 && out.push(u);
+  }
+  return out;
+}
+function inTextField(t) {
+  if (!t) return !1;
+  let tag = String(t.tagName || "").toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "UI-INPUT" || tag === "UI-TEXTAREA" || tag === "UI-NUM-INPUT" ? !0 : !!t.isContentEditable;
 }
 function db(method, ...args) {
   return Editor.Message.request("asset-db", method, ...args);
@@ -25070,7 +25284,7 @@ function toEntry(info, parent) {
 function createProjectApp(el) {
   let thumbs = null, refreshTimer = null, searchTimer = null, resize = null, syncTimer = null, ownSelection = "", expandKey = "", expandTimer = null, pingTimer = null, menuAnchor = null, cancelExpand = () => {
     expandTimer && clearTimeout(expandTimer), expandTimer = null, expandKey = "";
-  }, unlistenDoc = null, mascotPos = null, mascotTimer = null, resizeFrame = 0, app = (0, vue_esm_bundler_exports.createApp)({
+  }, unlistenDoc = null, mascotPos = null, mascotTimer = null, resizeFrame = 0, noticeTimer = null, unlistenMods = null, app = (0, vue_esm_bundler_exports.createApp)({
     template: TEMPLATE,
     data() {
       return {
@@ -25114,7 +25328,15 @@ function createProjectApp(el) {
         colorPick: null,
         peekSrc: mascotUrl("undertable.png"),
         /** She ducks behind the edge while the pointer is near her. */
-        mascotShy: !1
+        mascotShy: !1,
+        /** Alt / Shift held (the status bar shows what an Alt drag does). */
+        mods: { alt: !1, shift: !1 },
+        /** A short message in the status bar (copied, imported...). */
+        notice: "",
+        /** Import Asset Package dialog: { info, mode, folderUrl, rows, decisions, busy, error } while open. */
+        importDlg: null,
+        /** Export Package dialog: { rows, checked, includeDeps, roots, busy, error } while open. */
+        exportDlg: null
       };
     },
     computed: {
@@ -25235,6 +25457,40 @@ function createProjectApp(el) {
       statusPath() {
         let s = this.selectedEntries;
         return s.length === 1 ? s[0].url : s.length > 1 ? s.length + " assets selected" : this.searching ? this.items.length + " results" : this.folder === PACKAGES_ROOT ? "Packages" : this.folder;
+      },
+      /** Status bar text: a notice, the Alt drag hint while Alt is held, else the path. */
+      statusText() {
+        return this.notice ? this.notice : this.mods.alt ? this.mods.shift ? "Alt+Shift drag: a package (files, dependencies, .meta) to drop on another Cocos project's Project window" : "Alt drag: the files themselves, to Explorer, a browser upload, a chat... (add Shift: a package for another Cocos project)" : this.statusPath;
+      },
+      /** Rows of the import dialog: tree order, with labels and check state. */
+      importRows() {
+        let d = this.importDlg;
+        if (!d) return [];
+        let rows = treeRows(d.rows);
+        return rows.map((r) => {
+          let action = r.isDirectory ? "import" : d.decisions[r.path] || r.action, checked = action !== "skip";
+          if (r.isDirectory) {
+            let under = rowsUnder(rows, r.target).filter((x) => !x.isDirectory), on = under.filter((x) => (d.decisions[x.path] || x.action) !== "skip").length;
+            checked = on === 0 ? !1 : on === under.length ? !0 : null;
+          }
+          return Object.assign({}, r, {
+            checked,
+            actionNow: action,
+            statusText: statusLabel(r.status),
+            choices: r.isDirectory ? [] : r.actions.map((a) => ({ value: a, label: actionLabel(a, r.status) })),
+            conflict: r.status === "changed" || r.status === "moved" || r.status === "taken"
+          });
+        });
+      },
+      importSummary() {
+        let d = this.importDlg;
+        if (!d) return "";
+        let files = d.rows.filter((r) => !r.isDirectory && r.target), on = files.filter((r) => (d.decisions[r.path] || r.action) !== "skip").length, conflicts = files.filter((r) => r.status === "changed" || r.status === "moved" || r.status === "taken").length, same = files.filter((r) => r.status === "identical").length;
+        return on + " of " + files.length + " to import" + (conflicts ? ", " + conflicts + " conflict" + (conflicts > 1 ? "s" : "") : "") + (same ? ", " + same + " identical" : "");
+      },
+      exportCount() {
+        let d = this.exportDlg;
+        return d ? d.rows.filter((r) => d.checked[r.uuid]).length : 0;
       },
       selectedLabels() {
         let s = this.selectedEntries;
@@ -25484,23 +25740,30 @@ function createProjectApp(el) {
       },
       itemDown(v, e) {
         let el2 = this.$el;
-        if (el2 && el2.focus && el2.focus(), e.button !== 0 && this.isSel(v.a)) return;
+        if (el2 && el2.focus && el2.focus(), this.trackMods(e), e.button === 0 && e.altKey && e.shiftKey && v.a.uuid.indexOf("pkg:") !== 0) {
+          let list = this.isSel(v.a) ? this.selectedEntries : [v.a];
+          try {
+            Editor.Message.send(PKG2, "prepare-os-drag", mainUuids(list));
+          } catch {
+          }
+        }
+        if (e.button !== 0 && this.isSel(v.a)) return;
         let items = this.items, idx = items.indexOf(v.a);
-        if (e.shiftKey && this.anchor >= 0) {
+        if (e.shiftKey && !e.altKey && this.anchor >= 0) {
           let a = Math.min(this.anchor, idx), b = Math.max(this.anchor, idx);
           this.setSelection(items.slice(a, b + 1).map((x) => x.uuid));
-        } else if (e.ctrlKey || e.metaKey) {
+        } else if ((e.ctrlKey || e.metaKey) && !e.altKey) {
           let sel = this.selection.slice(), at = sel.indexOf(v.a.uuid);
           at >= 0 ? sel.splice(at, 1) : sel.push(v.a.uuid), this.anchor = idx, this.setSelection(sel);
-        } else if (!this.isSel(v.a) || this.selection.length === 1)
-          this.anchor = idx, this.setSelection([v.a.uuid]);
-        else {
-          this.anchor = idx;
-          let up = () => {
-            document.removeEventListener("mouseup", up), this.internalDrag || this.setSelection([v.a.uuid]);
-          };
-          document.addEventListener("mouseup", up);
-        }
+        } else this.isSel(v.a) && this.selection.length === 1 ? this.anchor = idx : (this.anchor = idx, this.armClickSelect(v.a.uuid));
+      },
+      /** Selects `uuid` on the next mouseup unless a drag starts first (see itemDown / dragStart). */
+      armClickSelect(uuid) {
+        cancelClickSelect();
+        let up = () => {
+          cancelClickSelect(), this.internalDrag || this.setSelection([uuid]);
+        };
+        document.addEventListener("mouseup", up, !0), pendingClickUp = up;
       },
       clickEmpty(e) {
         if (e.button !== 0) return;
@@ -25677,7 +25940,7 @@ This cannot be undone.`, "Delete")) {
        * Create menu as in Cocos' Assets panel: Folder, then asset-db's list (every asset
        * handler, grouped), then what extensions add through contributions.assets.menu.createMenu.
        */
-      async createMenuItems() {
+      async createMenuItems(withPackages = !1) {
         let items = [{ label: "Folder", click: () => this.createFolder() }], list = [];
         try {
           list = await db("query-create-menu-list") || [];
@@ -25705,7 +25968,7 @@ This cannot be undone.`, "Delete")) {
           }
           return Array.isArray(it.submenu) ? Object.assign({}, it, { submenu: it.submenu.map(nameFirst) }) : it;
         };
-        return ext2.length && items.push(sep(), ...ext2.map(nameFirst)), items.map((m) => (m && m.group !== void 0 && delete m.group, m));
+        return ext2.length && items.push(sep(), ...ext2.map(nameFirst)), withPackages && dir && !isReadonlyUrl(dir) && items.push(sep(), { label: "Import Asset Package...", click: () => this.pickPackage(dir) }), items.map((m) => (m && m.group !== void 0 && delete m.group, m));
       },
       /** Asset info in the shape extension menu hooks expect (MenuAssetInfo). */
       async menuInfo(urlOrUuid) {
@@ -25793,7 +26056,7 @@ This cannot be undone.`, "Delete")) {
       async createMenu(e) {
         if (this.readonlyFolder) return;
         let r = e.target.getBoundingClientRect();
-        Editor.Menu.popup({ x: Math.round(r.left), y: Math.round(r.bottom), menu: await this.createMenuItems() });
+        Editor.Menu.popup({ x: Math.round(r.left), y: Math.round(r.bottom), menu: await this.createMenuItems(!0) });
       },
       async gridMenu(a, e) {
         a && !this.isSel(a) && this.setSelection([a.uuid]);
@@ -25801,12 +26064,13 @@ This cannot be undone.`, "Delete")) {
         dir && !isReadonlyUrl(dir) && menu.push({ label: "Create", submenu: await this.createMenuItems() }, { type: "separator" }), one && (menu.push({ label: "Open", click: () => this.open(one) }), menu.push({ label: "Show in Explorer", click: () => request("show-in-explorer", one.file || "") }), menu.push({ label: "Find in Assets Panel", click: () => request("reveal-in-assets", one.uuid) }), menu.push({ type: "separator" }), menu.push({ label: "Copy Path", click: () => request("copy-text", one.url) }), menu.push({ label: "Copy UUID", click: () => request("copy-text", one.uuid) }), menu.push({ type: "separator" }));
         let colorTargets = sel.length ? sel.every((x) => x.isDirectory && !x.parent && x.uuid.indexOf("pkg:") !== 0) ? sel.map((x) => x.uuid) : [] : dir && this.uuidByUrl[dir] ? [this.uuidByUrl[dir]] : [];
         if (colorTargets.length && menu.push({ label: "Folder Color", submenu: this.folderColorMenu(colorTargets, e) }, { type: "separator" }), sel.length) {
-          if (menu.push({ label: "Rename", enabled: !!one && !ro, click: () => this.startRename(one) }), menu.push({ label: "Duplicate", enabled: !ro, click: () => this.duplicateSelection() }), menu.push({ label: "Delete", enabled: !ro, click: () => this.deleteSelection() }), menu.push({ type: "separator" }), menu.push({ label: "Reimport", enabled: !sel.some((x) => x.uuid.indexOf("pkg:") === 0), click: () => this.reimport(sel) }), one && one.uuid.indexOf("pkg:") !== 0) {
+          let packable = sel.filter((x) => x.uuid.indexOf("pkg:") !== 0 && dbOf(x.url) === "assets");
+          if (menu.push({ label: "Copy as Package (Ctrl+C)", enabled: packable.length > 0, click: () => this.copySelection() }), menu.push({ label: "Export Package...", enabled: packable.length > 0, click: () => this.openExport(mainUuids(packable)) }), menu.push({ type: "separator" }), menu.push({ label: "Rename", enabled: !!one && !ro, click: () => this.startRename(one) }), menu.push({ label: "Duplicate", enabled: !ro, click: () => this.duplicateSelection() }), menu.push({ label: "Delete", enabled: !ro, click: () => this.deleteSelection() }), menu.push({ type: "separator" }), menu.push({ label: "Reimport", enabled: !sel.some((x) => x.uuid.indexOf("pkg:") === 0), click: () => this.reimport(sel) }), one && one.uuid.indexOf("pkg:") !== 0) {
             let ext2 = await this.extensionMenu("assetMenu", await this.menuInfo(one.uuid));
             ext2.length && menu.push({ type: "separator" }, ...ext2);
           }
         } else dir && (menu.push({ label: "Show in Explorer", click: async () => request("show-in-explorer", await db("query-path", dir) || "") }), menu.push({ label: "Refresh", click: () => db("refresh-asset", dir).then(() => this.reload()) }));
-        menu.push({ type: "separator" }), menu.push({ label: "Render Previews (Materials, Models, Prefabs)", type: "checkbox", checked: !!this.ui.renderPreviews, click: () => this.togglePreviews() }), menu.push({ label: "Clear Thumbnail Cache", click: () => this.clearThumbs() }), menu.push({ label: "Show Grid Mascot", type: "checkbox", checked: this.ui.mascot !== !1, click: () => this.toggleMascot() }), menu.push({ label: "Show Toolbar Mascot", type: "checkbox", checked: this.ui.peek !== !1, click: () => this.togglePeek() }), menu.push({ type: "separator" }), menu.push({ label: "Log Drag Data (diagnostics)", type: "checkbox", checked: !!this.ui.logDrag, click: () => this.toggleLogDrag() }), Editor.Menu.popup({ x: e.clientX, y: e.clientY, menu });
+        dir && !isReadonlyUrl(dir) && (menu.push({ type: "separator" }), menu.push({ label: "Paste (Ctrl+V)", click: () => this.paste() }), menu.push({ label: "Import Asset Package...", click: () => this.pickPackage(dir) }), menu.push({ label: "Cocos' Import Asset Package (built-in)...", click: () => this.cocosImportPackage(dir) })), menu.push({ type: "separator" }), menu.push({ label: "Render Previews (Materials, Models, Prefabs)", type: "checkbox", checked: !!this.ui.renderPreviews, click: () => this.togglePreviews() }), menu.push({ label: "Clear Thumbnail Cache", click: () => this.clearThumbs() }), menu.push({ label: "Show Grid Mascot", type: "checkbox", checked: this.ui.mascot !== !1, click: () => this.toggleMascot() }), menu.push({ label: "Show Toolbar Mascot", type: "checkbox", checked: this.ui.peek !== !1, click: () => this.togglePeek() }), menu.push({ type: "separator" }), menu.push({ label: "Log Drag Data (diagnostics)", type: "checkbox", checked: !!this.ui.logDrag, click: () => this.toggleLogDrag() }), Editor.Menu.popup({ x: e.clientX, y: e.clientY, menu });
       },
       // -------------------------------------------------------------- folder colours
       /** Inline style tinting a folder's icon (the folder SVGs draw with currentColor). */
@@ -25938,7 +26202,12 @@ This cannot be undone.`, "Delete")) {
           e.preventDefault();
           return;
         }
-        let list = this.isSel(a) ? this.selectedEntries : [a];
+        cancelClickSelect();
+        let list = this.isSel(a) ? this.selectedEntries : [a], mode = osDragMode(!!e.altKey || this.mods.alt, !!e.shiftKey || this.mods.alt && this.mods.shift);
+        if (mode !== "none") {
+          e.preventDefault(), e.stopPropagation(), this.startOsDrag(list, mode);
+          return;
+        }
         this.internalDrag = list;
         let p = dragPayload(list);
         try {
@@ -26107,18 +26376,7 @@ This cannot be undone.`, "Delete")) {
         if (!this.canDropInto(url)) return;
         let { uuids, files, nodes } = this.readDrop(e);
         if (!files.length && !uuids.length && nodes.length) return this.createPrefabs(nodes, url);
-        if (files.length) {
-          for (let i = 0; i < files.length; i++) {
-            let base = files[i].replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Imported";
-            try {
-              let target = await db("generate-available-url", url + "/" + base);
-              await db("import-asset", files[i], target);
-            } catch (err) {
-              console.warn("[Project Browser] Could not import " + files[i], err);
-            }
-          }
-          return;
-        }
+        if (files.length) return this.dropFiles(files, url);
         let list = uuids.map((u) => this.byUuid[u]).filter((a) => !!a && !a.parent && !isReadonlyUrl(a.url) && parentUrl(a.url) !== url && url.indexOf(a.url + "/") !== 0 && a.url !== url);
         if (list.length && !(list.length > 1 && !await confirm("Move " + list.length + " assets into " + url + "?", "Move")))
           for (let i = 0; i < list.length; i++) {
@@ -26131,11 +26389,386 @@ This cannot be undone.`, "Delete")) {
             }
           }
       },
+      /** OS files into a folder: asset packages open the import dialog, other files are imported (new uuids). */
+      async dropFiles(files, url) {
+        let pkgs = [];
+        try {
+          let r = await request("probe-paths", files.slice());
+          pkgs = Array.isArray(r) ? r : [];
+        } catch {
+          pkgs = [];
+        }
+        let rest = files.filter((f) => pkgs.indexOf(f) < 0);
+        if (rest.length) {
+          let inside = [];
+          try {
+            let r = await request("inside-project", rest.slice());
+            inside = Array.isArray(r) ? r : [];
+          } catch {
+            inside = [];
+          }
+          let own = rest.filter((f, i) => !!inside[i]);
+          own.length && (rest = rest.filter((f, i) => !inside[i]), this.flashNotice(own.length === 1 ? "That file is already in this project: not imported again (Ctrl+D duplicates)." : own.length + " files are already in this project: not imported again."));
+        }
+        await this.importFiles(rest, url), pkgs.length && await this.openImport(pkgs[0], url);
+      },
+      /** Imports OS files into a folder (asset-db import-asset; Cocos gives them new uuids). */
+      async importFiles(files, url) {
+        for (let i = 0; i < files.length; i++) {
+          let base = files[i].replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Imported";
+          try {
+            let target = await db("generate-available-url", url + "/" + base);
+            await db("import-asset", files[i], target);
+          } catch (err) {
+            console.warn("[Project Browser] Could not import " + files[i], err);
+          }
+        }
+      },
+      // -------------------------------------------------------------- drag out to the OS, clipboard
+      /** Alt / Shift state for the status bar hint (any key or mouse event over the window). */
+      trackMods(e) {
+        let alt = !!e.altKey, shift = !!e.shiftKey;
+        (this.mods.alt !== alt || this.mods.shift !== shift) && (this.mods = { alt, shift });
+      },
+      flashNotice(text, ms = 5e3) {
+        noticeTimer && clearTimeout(noticeTimer), this.notice = text, noticeTimer = setTimeout(() => {
+          noticeTimer = null, this.notice = "";
+        }, ms);
+      },
+      /**
+       * Alt drag: the HTML drag is cancelled and the main process starts a native
+       * file drag (webContents.startDrag). 'files': the files themselves (sub-assets
+       * give their main file, folders drag as folders); 'package': a package folder
+       * with the dependencies and .meta files, for another Cocos project.
+       */
+      startOsDrag(list, mode) {
+        try {
+          let area = Editor.UI && Editor.UI.DragArea;
+          area && area.currentDragInfo && (area.currentDragInfo = null);
+        } catch {
+        }
+        let real = list.filter((a) => a.uuid.indexOf("pkg:") !== 0 && a.uuid.indexOf("new:") !== 0);
+        if (!real.length) return;
+        if (mode === "package") {
+          let uuids = mainUuids(real.filter((a) => dbOf(a.url) === "assets"));
+          if (!uuids.length) {
+            this.flashNotice("Only assets under Assets can go into a package.");
+            return;
+          }
+          this.flashNotice("Packing " + uuids.length + " asset" + (uuids.length > 1 ? "s" : "") + " with dependencies... keep holding the mouse button."), sendOsDrag({ mode, uuids });
+          return;
+        }
+        let files = osDragFiles(real, (u) => this.byUuid[u] && this.byUuid[u].file || "");
+        files.length && sendOsDrag({ mode, files, thumbUuid: real.length === 1 ? real[0].uuid : "" });
+      },
+      /** Ctrl+C: the selection (and what it needs) as a package on the system clipboard. */
+      async copySelection() {
+        let list = this.selectedEntries.filter((a) => a.uuid.indexOf("pkg:") !== 0 && dbOf(a.url) === "assets");
+        if (!list.length) {
+          this.selectedEntries.length && this.flashNotice("Only assets under Assets can be copied as a package.");
+          return;
+        }
+        this.flashNotice("Copying " + list.length + " asset" + (list.length > 1 ? "s" : "") + " as a package...", 3e4);
+        let r = null;
+        try {
+          r = await request("copy-package", mainUuids(list));
+        } catch (err) {
+          r = { ok: !1, error: String(err) };
+        }
+        if (!r || !r.ok) {
+          this.flashNotice("Copy failed: " + (r && r.error || "no answer"));
+          return;
+        }
+        this.flashNotice(
+          "Copied a package of " + r.count + " asset" + (r.count === 1 ? "" : "s") + ". Ctrl+V in another project's Project window" + (r.how === "files+text" ? "; Explorer pastes the package folder." : "."),
+          8e3
+        );
+      },
+      /** Ctrl+V: a package opens the import dialog; files copied in Explorer are imported. */
+      async paste() {
+        let dir = this.targetFolder() || ASSETS_ROOT;
+        if (isReadonlyUrl(dir)) return;
+        let r = null;
+        try {
+          r = await request("read-clipboard");
+        } catch {
+          r = null;
+        }
+        if (r && r.kind === "package") return this.openImport(r.path, dir, !0);
+        if (r && r.kind === "files" && Array.isArray(r.files) && r.files.length) return this.dropFiles(r.files.slice(), dir);
+        this.flashNotice("Nothing to paste: copy assets in a Project window, or files in Explorer.");
+      },
+      // -------------------------------------------------------------- import package dialog
+      /** "Import Asset Package...": pick a package (zip, or the asset-package.json of a folder). */
+      async pickPackage(dir) {
+        let folder = dir || this.targetFolder() || ASSETS_ROOT, r = null;
+        try {
+          r = await Editor.Dialog.select({
+            title: "Import Asset Package",
+            type: "file",
+            filters: [{ name: "Asset packages (.zip, asset-package.json)", extensions: ["zip", "json"] }]
+          });
+        } catch {
+          r = null;
+        }
+        let p = r && !r.canceled && r.filePaths && r.filePaths[0];
+        p && await this.openImport(String(p), folder);
+      },
+      /** Opens the import dialog for a package (folder, zip, asset-package.json, Cocos zip). */
+      async openImport(path, folderUrl, pasted = !1) {
+        this.importDlg && this.closeImport();
+        let info = await request("open-package", path).catch((err) => ({ ok: !1, error: String(err) }));
+        if (!info || !info.ok) {
+          this.flashNotice("Not an asset package: " + (info && info.error || path), 8e3);
+          return;
+        }
+        if (info.ownTemp) {
+          if (request("close-package", info.id), pasted) return this.pasteCopies(info.roots || [], folderUrl);
+          this.flashNotice("That package was made from this project: nothing to import.");
+          return;
+        }
+        let folder = folderUrl && !isReadonlyUrl(folderUrl) && folderUrl !== PACKAGES_ROOT ? folderUrl : ASSETS_ROOT;
+        this.importDlg = { info, mode: "original", folderUrl: folder, rows: [], decisions: {}, busy: !0, error: "" }, await this.classifyImport();
+      },
+      /** Copies of assets of this project into a folder (asset-db copy-asset: new uuids). */
+      async pasteCopies(uuids, folderUrl) {
+        let dir = folderUrl && !isReadonlyUrl(folderUrl) && folderUrl !== PACKAGES_ROOT ? folderUrl : ASSETS_ROOT, n = 0, first = "";
+        for (let i = 0; i < uuids.length; i++) {
+          let a = this.byUuid[uuids[i]];
+          if (!(!a || a.parent || dir === a.url || dir.indexOf(a.url + "/") === 0))
+            try {
+              let target = await db("generate-available-url", dir + "/" + a.name), info = await db("copy-asset", a.url, target);
+              n++, !first && info && info.uuid && (first = info.uuid);
+            } catch (err) {
+              console.warn("[Project Browser] Could not paste " + a.url, err);
+            }
+        }
+        this.flashNotice(n ? "Pasted " + n + " cop" + (n === 1 ? "y" : "ies") + " into " + dir + "." : "Nothing to paste here."), first && this.afterCreate(first, !1);
+      },
+      async classifyImport() {
+        let d = this.importDlg;
+        if (!d) return;
+        d.busy = !0;
+        let r = await request("classify-package", d.info.id, d.mode === "folder" ? d.folderUrl : null).catch((err) => ({ ok: !1, error: String(err) }));
+        if (this.importDlg !== d) return;
+        if (d.busy = !1, !r || !r.ok) {
+          d.error = r && r.error || "Could not read the package.", d.rows = [];
+          return;
+        }
+        d.error = "", d.rows = r.rows;
+        let next = {};
+        r.rows.forEach((row) => {
+          let prev = d.decisions[row.path];
+          next[row.path] = prev && row.actions.indexOf(prev) >= 0 ? prev : row.action;
+        }), d.decisions = next;
+      },
+      folderTitle(url) {
+        let c = breadcrumb(url || ASSETS_ROOT);
+        return c.length ? c[c.length - 1].label : "Assets";
+      },
+      /** Icon of a package row: folders, else the icon its type or file extension gets in the grid. */
+      pkgIcon(r) {
+        if (r.isDirectory) return iconSvg("Folder");
+        let p = String(r.target || r.path || ""), name = p.slice(p.lastIndexOf("/") + 1);
+        return this.iconFor({ uuid: "row:" + p, url: "db://" + p, name, type: r.type || "", importer: r.importer || "", isDirectory: !1 });
+      },
+      statusTitle(r) {
+        switch (r.status) {
+          case "new":
+            return "Not in this project yet";
+          case "identical":
+            return "Already in this project with the same uuid, path and content";
+          case "changed":
+            return "Same uuid and path, other content: Overwrite replaces the file and its .meta";
+          case "moved":
+            return "This uuid belongs to " + (r.existingPath || "another asset") + (r.actions.indexOf("copy") >= 0 ? "" : ". Scripts cannot take a new uuid (class ids), so only Skip or Overwrite.");
+          case "taken":
+            return "Another asset is at this path: Import renamed keeps the package uuid under a free name";
+        }
+        return "";
+      },
+      setImportMode(mode) {
+        !this.importDlg || this.importDlg.mode === mode || (this.importDlg.mode = mode, this.classifyImport());
+      },
+      /** The checkbox of a row: off = skip; on = the row's first non-skip choice. Folders toggle their content. */
+      toggleImportRow(row) {
+        let d = this.importDlg;
+        if (!d) return;
+        let on = (r) => r.actions.find((a) => a !== "skip") || "skip";
+        if (row.isDirectory) {
+          let turnOn = row.checked !== !0;
+          rowsUnder(d.rows, row.target).forEach((r) => {
+            r.isDirectory || (d.decisions[r.path] = turnOn ? r.status === "identical" ? "skip" : on(r) : "skip");
+          });
+        } else d.decisions[row.path] = row.checked ? "skip" : on(row);
+        d.decisions = Object.assign({}, d.decisions);
+      },
+      setImportAction(row, action) {
+        let d = this.importDlg;
+        !d || row.actions.indexOf(action) < 0 || (d.decisions = Object.assign({}, d.decisions, { [row.path]: action }));
+      },
+      /** All: every row to its default (identical ones stay skipped); None: everything skipped. */
+      importAll(on) {
+        let d = this.importDlg;
+        if (!d) return;
+        let next = {};
+        d.rows.forEach((r) => next[r.path] = on ? r.action : "skip"), d.decisions = next;
+      },
+      closeImport() {
+        let d = this.importDlg;
+        this.importDlg = null, d && d.info && request("close-package", d.info.id).catch(() => {
+        });
+      },
+      async runImport() {
+        let d = this.importDlg;
+        if (!d || d.busy) return;
+        d.busy = !0;
+        let decisions = JSON.parse(JSON.stringify(d.decisions)), r = await request("import-package", d.info.id, d.mode === "folder" ? d.folderUrl : null, decisions).catch((err) => ({ ok: !1, error: String(err) }));
+        if (this.importDlg !== d) return;
+        if (d.busy = !1, !r || !r.ok) {
+          d.error = r && r.error || "Import failed.";
+          return;
+        }
+        this.closeImport();
+        let parts = [r.written + " written"];
+        if (r.skipped && parts.push(r.skipped + " skipped"), r.remapped && parts.push(r.remapped + " copied with a new uuid"), r.errors && r.errors.length && parts.push(r.errors.length + " failed (see the console)"), this.flashNotice("Package imported: " + parts.join(", ") + ".", 8e3), await this.reload(), r.first) {
+          let a = this.assets.find((x) => x.url === r.first);
+          a && this.ping(a.uuid);
+        }
+      },
+      /**
+       * Cocos' own Import Asset Package (the built-in package-asset extension): its
+       * assets menu hook is loaded and its import item clicked, as the Assets panel
+       * does; else its import panel is opened.
+       */
+      async cocosImportPackage(dir) {
+        let path = require("path");
+        try {
+          let p = (Editor.Package.getPackages({ name: "package-asset" }) || []).find((x) => x && x.name === "package-asset"), menu = p && p.info && p.info.contributions && p.info.contributions.assets && p.info.contributions.assets.menu;
+          if (menu && menu.methods) {
+            let file = path.join(p.path, menu.methods), mod = null;
+            try {
+              mod = require(file);
+            } catch {
+              mod = require(file.replace(/\.js$/, ""));
+            }
+            let info = await this.menuInfo(dir), names = [menu.panelMenu, menu.dbMenu, menu.assetMenu].filter((n) => typeof n == "string");
+            for (let i = 0; i < names.length; i++) {
+              let fn = mod && mod[names[i]];
+              if (typeof fn != "function") continue;
+              let items = await fn(info) || [], found = findMenuItem(items, (label) => /import/i.test(label) && !/new/i.test(label));
+              if (found && typeof found.click == "function") {
+                found.click();
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[Project Browser] Could not run Cocos' Import Asset Package menu:", err);
+        }
+        try {
+          Editor.Panel.open("package-asset.import");
+        } catch {
+          this.flashNotice("Cocos' Import Asset Package is not available.");
+        }
+      },
+      // -------------------------------------------------------------- export package dialog
+      /** "Export Package...": the picked assets and their dependencies as a checklist (Unity's Export Package). */
+      async openExport(uuids) {
+        let roots = (uuids || []).filter((u) => typeof u == "string" && u.indexOf("pkg:") !== 0);
+        if (!roots.length) {
+          this.flashNotice("Select the assets to export first.");
+          return;
+        }
+        this.exportDlg = { rows: [], checked: {}, includeDeps: !0, roots: roots.slice(), busy: !0, error: "" };
+        let d = this.exportDlg, r = await request("collect-export", roots.slice()).catch((err) => ({ ok: !1, error: String(err) }));
+        if (this.exportDlg !== d) return;
+        if (d.busy = !1, !r || !r.ok) {
+          d.error = r && r.error || "Could not collect the assets.";
+          return;
+        }
+        d.rows = treeRows(r.rows.map((x) => Object.assign({ target: x.path }, x)));
+        let checked = {};
+        r.rows.forEach((x) => checked[x.uuid] = !0), d.checked = checked;
+      },
+      toggleExportRow(row) {
+        let d = this.exportDlg;
+        if (!d) return;
+        let on = !d.checked[row.uuid], next = Object.assign({}, d.checked, { [row.uuid]: on });
+        row.isDirectory && rowsUnder(d.rows, row.path).forEach((r) => next[r.uuid] = on), d.checked = next;
+      },
+      setIncludeDeps(on) {
+        let d = this.exportDlg;
+        if (!d) return;
+        d.includeDeps = on;
+        let next = Object.assign({}, d.checked);
+        d.rows.forEach((r) => {
+          r.dependency && (next[r.uuid] = on);
+        }), d.checked = next;
+      },
+      async runExport(zip) {
+        let d = this.exportDlg;
+        if (!d || d.busy) return;
+        let uuids = d.rows.filter((r2) => d.checked[r2.uuid]).map((r2) => r2.uuid);
+        if (!uuids.length) return;
+        let first = d.rows.find((r2) => d.roots.indexOf(r2.uuid) >= 0) || d.rows[0], base = String(first && first.name || "Package").replace(/\.[^.]+$/, "") || "Package", r = null;
+        try {
+          r = await Editor.Dialog.save({
+            title: zip ? "Export Package as .zip" : "Export Package to a Folder",
+            path: base + (zip ? ".zip" : " Package"),
+            filters: zip ? [{ name: "Zip", extensions: ["zip"] }] : []
+          });
+        } catch {
+          r = null;
+        }
+        let dest = r && !r.canceled && r.filePath;
+        if (!dest) return;
+        d.busy = !0;
+        let res = await request("export-package", uuids, d.roots.slice(), String(dest), zip).catch((err) => ({ ok: !1, error: String(err) }));
+        if (this.exportDlg === d) {
+          if (d.busy = !1, !res || !res.ok) {
+            d.error = res && res.error || "Export failed.";
+            return;
+          }
+          this.exportDlg = null, this.flashNotice("Exported " + res.count + " asset" + (res.count === 1 ? "" : "s") + " to " + res.path, 8e3);
+        }
+      },
+      /** Extension › Project Browser › Import / Export Package: take the request (once, in one window). */
+      async takePackageMenu() {
+        let m = "";
+        try {
+          m = await request("take-pending-menu");
+        } catch {
+          m = "";
+        }
+        if (m === "import") this.pickPackage(this.targetFolder() || ASSETS_ROOT);
+        else if (m === "export") {
+          let sel = [];
+          try {
+            sel = (Editor.Selection.getSelected("asset") || []).slice();
+          } catch {
+            sel = [];
+          }
+          sel.length || (sel = this.selection.slice()), this.openExport(sel.filter((u) => !!this.byUuid[u] && dbOf(this.byUuid[u].url) === "assets").map((u) => mainUuid(u)));
+        }
+      },
       // -------------------------------------------------------------- keyboard
       onKey(e) {
         let t = e.target;
-        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+        if (inTextField(t)) return;
         let ctrl = e.ctrlKey || e.metaKey;
+        if (this.importDlg || this.exportDlg) {
+          e.key === "Escape" && (e.preventDefault(), this.importDlg ? this.closeImport() : this.exportDlg = null);
+          return;
+        }
+        if (ctrl && !e.shiftKey && !e.altKey && (e.key === "c" || e.key === "C")) {
+          e.preventDefault(), e.stopPropagation(), this.copySelection();
+          return;
+        }
+        if (ctrl && !e.shiftKey && !e.altKey && (e.key === "v" || e.key === "V")) {
+          e.preventDefault(), e.stopPropagation(), this.paste();
+          return;
+        }
         if (e.key === "F2")
           e.preventDefault(), this.startRename();
         else if (e.key === "Delete")
@@ -26183,7 +26816,11 @@ This cannot be undone.`, "Delete")) {
       let end = () => this.endDrag();
       document.addEventListener("dragend", end, !0), document.addEventListener("drop", end, !0), unlistenDoc = () => {
         document.removeEventListener("dragend", end, !0), document.removeEventListener("drop", end, !0);
-      }, await this.loadStores(), await this.reload(), this.syncSelection(), this.$nextTick(() => {
+      };
+      let mods = (e) => this.trackMods(e), blur = () => this.trackMods({});
+      window.addEventListener("keydown", mods, !0), window.addEventListener("keyup", mods, !0), window.addEventListener("blur", blur), unlistenMods = () => {
+        window.removeEventListener("keydown", mods, !0), window.removeEventListener("keyup", mods, !0), window.removeEventListener("blur", blur);
+      }, await this.loadStores(), await this.reload(), this.syncSelection(), this.takePackageMenu(), this.$nextTick(() => {
         this.measure();
         let box = this.$refs.items;
         box && window.ResizeObserver && (resize = new ResizeObserver(() => {
@@ -26197,7 +26834,7 @@ This cannot be undone.`, "Delete")) {
   return app.config.compilerOptions.isCustomElement = (tag) => tag.startsWith("ui-"), {
     vm: app.mount(el),
     dispose() {
-      resize && resize.disconnect(), thumbs && thumbs.dispose(), refreshTimer && clearTimeout(refreshTimer), searchTimer && clearTimeout(searchTimer), syncTimer && clearTimeout(syncTimer), pingTimer && clearTimeout(pingTimer), cancelExpand(), unlistenDoc && unlistenDoc(), app.unmount();
+      resize && resize.disconnect(), thumbs && thumbs.dispose(), refreshTimer && clearTimeout(refreshTimer), searchTimer && clearTimeout(searchTimer), syncTimer && clearTimeout(syncTimer), pingTimer && clearTimeout(pingTimer), noticeTimer && clearTimeout(noticeTimer), unlistenMods && unlistenMods(), cancelExpand(), unlistenDoc && unlistenDoc(), app.unmount();
     }
   };
 }
@@ -26224,6 +26861,11 @@ module.exports = Editor.Panel.define({
      * 'ui-kit:touch-asset': an asset field (ui-asset) in the Inspector was
      * clicked; Cocos' Assets panel twinkles the asset, this window pings it.
      */
+    /** Extension › Project Browser › Import Asset Package / Export Package. */
+    onPackageMenu() {
+      let a = apps.get(this);
+      a && a.vm.takePackageMenu();
+    },
     onTouchAsset(...args) {
       let a = apps.get(this), uuid = touchedUuid(args);
       a && uuid && a.vm.ping(uuid);

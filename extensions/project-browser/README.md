@@ -83,8 +83,8 @@ Labels are stored per asset uuid in the project profile (`Editor.Profile` projec
 | Make a prefab | Drag nodes from the Hierarchy onto the grid (current folder) or onto any folder. Each node becomes `<Node name>.prefab`, or `Cube 1.prefab`, `Cube 2.prefab`... when the name is taken (`scene create-prefab (nodeUuid, url)`, which also links the node). The new prefab flashes when it lands in the open folder; the Hierarchy selection stays. |
 | Import | Drop files from Explorer onto a folder (`asset-db import-asset`). |
 | Drop feedback | While dragging, the folder that would take the drop is highlighted: a tree row, a folder thumbnail or list row, a breadcrumb segment, or the whole grid for the open folder. A folder that cannot take it shows the not-allowed cursor: the dragged folder itself, one of its children, the folder the assets are already in, read-only places. Hovering a closed tree folder for a moment opens it. |
-| Context menu | Create, Open, Show in Explorer, Find in Assets Panel, Copy Path, Copy UUID, Rename, Duplicate, Delete, Reimport, then what extensions add for that asset (`contributions.assets.menu.assetMenu`, e.g. Open in Shader Graph). Also Refresh for an empty-area click, the Render Previews toggle and Clear Thumbnail Cache. Extension menu files are loaded in the panel like the Assets panel does, and reloaded when they change. |
-| Keyboard | Arrow keys move the selection (Shift extends), Backspace goes to the parent folder, Ctrl+F focuses the search. |
+| Context menu | Create, Open, Show in Explorer, Find in Assets Panel, Copy Path, Copy UUID, Copy as Package, Export Package..., Rename, Duplicate, Delete, Reimport, then what extensions add for that asset (`contributions.assets.menu.assetMenu`, e.g. Open in Shader Graph). Also Refresh for an empty-area click, Paste, Import Asset Package..., Cocos' Import Asset Package (built-in)..., the Render Previews toggle and Clear Thumbnail Cache. Extension menu files are loaded in the panel like the Assets panel does, and reloaded when they change. |
+| Keyboard | Arrow keys move the selection (Shift extends), Backspace goes to the parent folder, Ctrl+F focuses the search, Ctrl+C / Ctrl+V copy and paste packages (see below). |
 
 Cocos Internal and the Packages root are read-only: no create, rename, move, delete or import there.
 
@@ -106,6 +106,118 @@ Drops into the browser read `currentDragInfo` (our own drags and the Assets pane
 Hierarchy rows are `<ui-drag-item type="cc.Node">`. A drop counts as nodes when the drag info's type is `cc.Node`, or `additional` has `cc.Node` entries. Uuids the asset index does not know are checked with `scene query-node`, for a Hierarchy docked in another window where `currentDragInfo` is not shared. The drop effect is chosen from what the source allows (`effectAllowed`), so a copy-only drag is not refused.
 
 The search-by-type, search-by-label and status-bar label dropdowns fit inside the visible panel. Each opens below its button, or above it when there is more room there. The list scrolls inside the height it gets, and is placed again when the panel resizes.
+
+## Moving assets between projects and out of the editor
+
+### Drag out with Alt
+
+| Hold when the drag starts | What is dragged | Drop it on |
+|---|---|---|
+| nothing | the editor drag (unchanged): Scene, Hierarchy, Inspector fields, folders of this window | the editor |
+| **Alt** | the files themselves, as a native file drag | Explorer, a browser upload field, Slack, Photoshop... |
+| **Alt + Shift** | a **package** folder: the assets, everything they use, their `.meta` files and `asset-package.json` | another Cocos project's Project window (uuids kept); Explorer also takes it, it is a plain folder |
+
+- While Alt is held over the window, the status bar says what the drag will do.
+- A multi-selection drags every file. Folders drag as folders. A sub-asset (a texture, a mesh) drags its main file.
+- The panel cancels the HTML drag and sends the paths over `ipcRenderer` (`project-browser:start-os-drag`). The main process answers with `webContents.startDrag({ files, icon })` on the sender, the panel's own webContents. Without `ipcRenderer` it falls back to the editor message `start-os-drag`, and main uses `webContents.getFocusedWebContents()`.
+- The icon is the asset's cached thumbnail (one file), or a drawn 32 px page or box.
+- A package is built when the drag starts, in `temp/project-browser/packages/<time>/`. Pressing Alt+Shift on an item already starts building it. **Keep the mouse button down until the drag icon appears.**
+- A file of this project that is dropped back on this project is not imported again. Use Ctrl+D to duplicate.
+
+### Asset packages
+
+A package keeps the uuids, so prefabs, materials and scenes stay linked in the other project, like a `.unitypackage`.
+
+```
+asset-package.json        format "cocos-asset-package", version 1, source project, picked uuids, and
+                          for each entry: path, uuid, type, importer, dependency/container flags, sha1, size
+assets/Art.meta           parent folders are carried for their uuid ("container")
+assets/Art/hero.png
+assets/Art/hero.png.meta
+assets/Art/hero.mtl
+...
+```
+
+**What goes in:**
+
+- The picked assets. Picked folders bring everything below them.
+- The dependencies, recursively:
+  - asset-db `query-asset-dependencies (uuid, 'all')`;
+  - every uuid written in the file and its `.meta`, including `"__uuid__"`, sub-asset ids `x@y`, and `userData` such as a texture's image;
+  - script class ids in `"__type__"` (compressed uuids, decoded);
+  - scripts a script imports with relative paths (`./util`).
+- Cocos Internal and extension databases (`db://input-system`...) are never packed. The other project needs those extensions itself.
+
+### Importing a package
+
+You can import a package in five ways:
+
+- drop the package folder (or a zip of it) on a folder of the Project window;
+- **Ctrl+V** after Ctrl+C in another project;
+- **Import Asset Package...** in the Create button, in the right-click menu, or in **Extension › Project Browser**;
+- an Alt+Shift drag from another project;
+- pick an `asset-package.json`.
+
+The **Import Asset Package** dialog, like Unity's, shows:
+
+- A tree of the files with checkboxes, the folder checkbox toggling its content, and a "dependency" tag.
+- **Import to**:
+  - **Original paths**: the same `assets/...` paths as in the source project.
+  - **Under '<folder>'**: the folder you dropped on, or the open folder. Paths below the package's common folder go there.
+- A mark and a choice for each entry:
+
+| Mark | Meaning | Choices (first is the default) |
+|---|---|---|
+| New | neither the uuid nor the path is used here | Import / Skip |
+| Identical | same uuid, same path, same content | Skip / Overwrite |
+| Changed | same uuid and path, other content | Overwrite / Skip |
+| UUID used elsewhere | the uuid belongs to an asset at another path | Skip / Overwrite it where it is / Import as a copy (new uuid) |
+| Path taken | another asset is at that path | Import renamed (keep uuid, `hero 1.png`) / Replace the file there / Skip |
+
+- **Import as a copy** gives the asset a new uuid and rewrites that uuid in every text file of the package being imported (`.meta`, prefab, scene, material, animation JSON), sub-asset ids included. Scripts never get it: a component's class id is its compressed uuid, which cannot be remapped safely, so scripts only offer Skip or Overwrite.
+- **Replace the file there** gives the existing asset the package's uuid: references to its old uuid in this project break. The tooltip says so.
+
+**How the import runs:**
+
+1. Everything is written to `temp/project-browser/staging/<time>/` first, with uuids remapped there.
+2. It is then moved into `assets/`.
+3. asset-db `refresh-asset` runs on the first existing folder above what was written.
+4. Overwritten assets get `reimport-asset`.
+
+asset-db keeps the uuid of a new file whose `.meta` is next to it. A folder keeps its uuid unless that uuid is already used.
+
+**Export Package...** (right-click, or Extension › Project Browser) opens a checklist of the selection and its dependencies, like Unity's Export Package. It has an **Include dependencies** switch. **Export Folder...** writes the package folder; **Export .zip...** writes the same folder as a zip.
+
+### Copy and paste between projects
+
+- **Ctrl+C** in the Project window builds the package (as above) and puts it on the system clipboard:
+  - On Windows this is one clipboard write through .NET (PowerShell): the package folder as a file list (CF_HDROP, plus the FileNameW that Windows adds), so **Explorer can paste the package folder**, and a text whose first line is `Cocos asset package: <folder>`.
+  - Electron's `clipboard.writeBuffer` cannot do this: each call replaces the clipboard, and CF_HDROP is a predefined format it cannot name.
+  - If PowerShell fails, the FileNameW buffer alone is written. On other systems, the text alone.
+- **Ctrl+V** in another project's Project window:
+  - our text, or a copied package folder or zip, opens the import dialog;
+  - files copied in Explorer are imported into the open folder, like a drop (new uuids).
+- Ctrl+C and Ctrl+V act only while the Project window has focus and no text field (search, rename, label) is focused. Ctrl+D, Ctrl+A, F2, Delete and the other keys are unchanged.
+
+### Cocos' own Import / Export Asset Package
+
+Cocos 3.8.6 ships these as the built-in `package-asset` extension:
+
+- the panels `package-asset.export` and `package-asset.import`;
+- an assets menu hook with `dbMenu`, `panelMenu` and `assetMenu`;
+- its code is encrypted (`.ccc`).
+
+Its "Export Asset Package" writes a **.zip** of the assets with their `.meta` files, and only its own "Import Asset Package" reads it. The manual does not describe the zip layout.
+
+**Import Asset Package...** here also opens such a zip. It reads it as "loose" files:
+
+- uuids come from the `.meta` files;
+- paths go under `assets/` unless they already start with it;
+- files without a `.meta` are flagged "no meta" and get new uuids.
+
+**Cocos' Import Asset Package (built-in)...** runs Cocos' own import instead. It loads `package-asset`'s menu hook and clicks its import item, the way the Assets panel does, or else opens `package-asset.import`.
+
+**Dropping onto Cocos' own Assets panel** (an Alt drag, or the package folder) imports the dropped files as new files. Count on **new uuids** there. To keep uuids, drop onto this Project window, or use Import Asset Package... here.
 
 ## Thumbnails
 
@@ -169,7 +281,9 @@ npm install
 npx tsc            # typecheck
 node scripts/build.js
 node tests/run.js  # search, type mapping, labels, tree and path helpers, drag data, icons,
-                   # drop rules, prefab names, popup placement, ping helpers, image sources, RGBE
+                   # drop rules, prefab names, popup placement, ping helpers, image sources, RGBE,
+                   # packages: uuids and dependencies, manifest, conflicts, path remapping,
+                   # clipboard text and FileNameW, zip and PNG, and main.ts with mocked Editor + electron
 ```
 
 `dist/` is bundled with esbuild, Vue 3 included.
@@ -182,8 +296,22 @@ The panel uses Vue's template compiler build (`vue/dist/vue.esm-bundler.js`), li
 
 **Verified in headless Chrome** with a mocked `Editor`. Image thumbnails of real WebP, GIF, TGA (library PNG), RGBE HDR and an atlas with a sprite frame are covered. So are the selection calls passing a structured clone (the old ones passed a Vue proxy, which the editor's IPC cannot clone), drop highlight, not-allowed and spring-loaded folders, a Hierarchy-style node drop calling `create-prefab`, dropdown placement in a short panel, and the ping.
 
+**Packages, drag out and clipboard:**
+
+- **Verified in node:**
+  - building packages from fixture projects with a fake asset-db (dependencies through the file parser, asset-db lists, script imports and class ids);
+  - opening folders, our zips and manifest-less zips (a real Windows Compress-Archive zip included);
+  - every conflict state, copy with remapped uuids, renamed copies, in-place overwrite, folder mode, staging cleanup and refresh urls;
+  - main.ts: startDrag on the IPC sender or the focused webContents, the icons, packages prepared on press, Ctrl+C / Ctrl+V through the Electron fallback, open / classify / import / export messages, the Extension menu hand-off.
+- **Verified on Windows** by running the PowerShell scripts: the clipboard gets CF_HDROP, FileNameW and the text in one write (a Vietnamese path included), and the file list reads back.
+- **Verified in headless Chrome:** the Alt hint, a plain drag unchanged, the Alt drag cancelling the HTML drag and sending the paths over ipcRenderer, multi-selection and sub-assets, Alt+Shift preparing the package, Ctrl+C / Ctrl+D / Ctrl+V (and Ctrl+C left to the search field), dropping a package plus a plain file, the import dialog (marks, choices, folder mode, plain decisions over IPC), the export dialog and the new menu items.
+
 **Not yet run in Cocos:**
 
+- `webContents.startDrag` from the panel, and Explorer / browsers / Slack taking the drop
+- whether Cocos' global shortcuts take Ctrl+C / Ctrl+V before the panel
+- asset-db keeping the uuids of the written `.meta` files on `refresh-asset`, and `query-asset-dependencies` with `'all'`
+- reading a zip from Cocos' own Export Asset Package (its layout is not documented), and the built-in import hook
 - the panel itself
 - preview rendering through PreviewExtends
 - `ui-drag-item` drops into the Scene, Hierarchy and Inspector
@@ -195,3 +323,7 @@ Known limitations:
 
 - A prefab thumbnail is not re-rendered when only a material it uses changes. Clear the cache to refresh it.
 - Labels are not written to `.meta` files, so other tools don't see them.
+- Ctrl+C with PowerShell takes one to a few seconds on Windows (the status bar says "Copying..."). Pasting files copied in Explorer runs PowerShell too, for the full file list.
+- Pasting files from the clipboard (not a package) works on Windows only.
+- Package temp folders (`temp/project-browser/packages`, `incoming`, `export`) are removed after a day.
+- Two scripts with the same class name in one project make Cocos complain: when a package brings a script whose class already exists under another uuid, skip it.

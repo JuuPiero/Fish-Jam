@@ -1,0 +1,278 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Console Pro smoke</title>
+<style>
+  :root { --color-normal-fill: #282828; --color-normal-contrast: #cccccc; --color-normal-border: #111; --color-normal-fill-weaker: #3c3c3c; --color-focus-fill-important: #2c5d87; --color-focus-contrast: #ffffff; }
+  body { margin: 0; background: #282828; font: 12px Arial, sans-serif; color: #ccc; }
+  #host { width: 1000px; height: 560px; border: 1px solid #555; display: flex; flex-direction: column; }
+  #result { white-space: pre; color: #ddd; padding: 4px; font: 11px monospace; }
+</style>
+<div id="host"></div>
+<div id="result-wait"></div>
+<script>
+// ------------------------------------------------------------------ fake data: 100k lines
+const N = 100000;
+const T0 = Date.now() - N * 10;
+const SOURCES = ['main', 'scene', 'game', 'panel'];
+const TAGS = ['', '', '', 'Net', 'C#', 'Hot Reload', 'Media Utils'];
+const entries = [];
+for (let i = 0; i < N; i++) {
+    const level = i % 50 === 0 ? 'error' : i % 9 === 0 ? 'warn' : i % 97 === 0 ? 'info' : 'log';
+    const tag = TAGS[i % TAGS.length];
+    let text = (tag ? '[' + tag + '] ' : '') + 'Message ' + (i % 1000) + ' needle-' + i;
+    if (i % 333 === 0) text += '\nsecond line of ' + i + '\nthird line with <b>html</b> & stuff';
+    entries.push({
+        id: i + 1, t: T0 + i * 10, level, text,
+        stack: level === 'error' ? 'Error: x\n    at Player.update (pack:///chunks/ab/ab0123456789abcdef0123456789abcdef012345.js:12:5)\n    at cce.Engine.tick (cce:/internal/x/cc:1:1)' : '',
+        source: SOURCES[i % 4], tag,
+    });
+}
+const expect = {
+    needle777: entries.filter((e) => e.text.indexOf('needle-777') >= 0).length,
+    regex: entries.filter((e) => /needle-77[0-9]$/i.test(e.text)).length,
+    net: entries.filter((e) => e.tag === 'Net').length,
+};
+
+// ------------------------------------------------------------------ fake editor (IPC = structured clone: proxies throw)
+const calls = [];
+const failures = [];
+function ipc(args) {
+    try { return structuredClone(args); } catch (e) { failures.push('IPC clone failed: ' + e.message); throw e; }
+}
+window.Editor = {
+    Project: { path: 'E:/Fake', name: 'Fake' },
+    Menu: { popup: (o) => calls.push(['menu', o.menu.map((m) => m.label || '-')]) },
+    Message: {
+        send: (...a) => { ipc(a); calls.push(['send'].concat(a)); },
+        async request(pkg, method, ...args) {
+            ipc(args);
+            calls.push([method].concat(args));
+            if (method === 'query-logs') return { entries, config: { errorPause: false, clearOnPlay: false, capacity: 200000, sceneHook: true }, play: { playing: false, paused: false }, mode: 'event' };
+            if (method === 'resolve-frames') return args[0].map((f) => /pack:/.test(f.url)
+                ? { file: 'E:/Fake/assets/Player.ts', line: 30, col: 9, display: 'assets/Player.ts:30:9', user: true, mapped: true, cs: { file: 'E:/Fake/assets/Player.cs', line: 25, display: 'assets/Player.cs:25' } }
+                : { file: '', line: 0, col: 0, display: f.url, user: false });
+            if (method === 'open-location') return { ok: true, via: 'Code.exe' };
+            if (method === 'copy-text') return true;
+            if (method === 'set-config') return { errorPause: args[0] === 'errorPause' ? args[1] : false, clearOnPlay: false, capacity: 200000, sceneHook: true };
+            if (method === 'clear') { setTimeout(() => app.vm.onCleared(), 0); return true; }
+            return null;
+        },
+    },
+};
+const vueWarnings = [];
+const origWarn = console.warn;
+console.warn = (...a) => { vueWarnings.push(a.map(String).join(' ').slice(0, 200)); origWarn.apply(console, a); };
+window.addEventListener('error', (e) => failures.push('window error: ' + e.message));
+</script>
+<script src="../out/smoke/bundle.js"></script>
+<script>
+const host = document.getElementById('host');
+const shadow = host.attachShadow({ mode: 'open' });
+shadow.innerHTML = '<style>' + PANEL_STYLE + '</style><div id="app"></div>';
+const $ = (s) => shadow.querySelector(s);
+const $$ = (s) => Array.from(shadow.querySelectorAll(s));
+const frames = (n = 2) => new Promise((r) => { const step = () => (n-- <= 0 ? r() : requestAnimationFrame(step)); step(); });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const lines = [];
+let ok = 0, bad = 0;
+function check(name, cond, info) { if (cond) ok++; else bad++; lines.push((cond ? 'ok   ' : 'FAIL ') + name + (info !== undefined ? '  [' + info + ']' : '')); }
+async function until(fn, ms = 5000) { const s = performance.now(); while (performance.now() - s < ms) { if (fn()) return performance.now() - s; await sleep(5); } return -1; }
+const rowTexts = () => $$('.cp-row .msg').map((m) => m.textContent);
+const listEl = () => $('.cp-list');
+const atBottom = () => { const l = listEl(); return l.scrollTop + l.clientHeight >= l.scrollHeight - 4; };
+function key(k, extra = {}) { const ev = new KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true, composed: true, cancelable: true }, extra)); listEl().dispatchEvent(ev); return ev; }
+function mouse(el, type, extra = {}) { el.dispatchEvent(new MouseEvent(type, Object.assign({ bubbles: true, composed: true, cancelable: true, button: 0 }, extra))); }
+let app;
+
+(async () => {
+try {
+    try { localStorage.clear(); } catch (e) {}
+    // 1. load 100k lines
+    let t = performance.now();
+    app = createConsoleApp($('#app'));
+    const loadMs = await until(() => $$('.cp-row').length > 0);
+    await frames(3);
+    check('loads 100k lines', loadMs >= 0, Math.round(performance.now() - t) + ' ms');
+    check('only the rows in view are in the DOM', $$('.cp-row').length < 80, $$('.cp-row').length + ' rows');
+    check('starts scrolled to the bottom', atBottom());
+    check('last line shown', rowTexts().some((s) => s.indexOf('needle-' + (N - 1)) >= 0));
+    const counts = $$('.cp-btn.level .n').map((n) => n.textContent);
+    check('level counts', counts.indexOf('999+') >= 0 && counts.length >= 3, counts.join(','));
+    check('chips: sources and tags', $$('.cp-chip').length >= 8, $$('.cp-chip').map((c) => c.textContent).join('|'));
+
+    // 2. scrolling the middle
+    t = performance.now();
+    listEl().scrollTop = listEl().scrollHeight / 2;
+    listEl().dispatchEvent(new Event('scroll'));
+    await frames(3);
+    const mid = rowTexts();
+    check('scroll to the middle renders the middle', mid.some((s) => /needle-(49\d{3}|50\d{3})/.test(s)), mid[0] + ' (' + Math.round(performance.now() - t) + ' ms)');
+
+    // 3. search
+    const input = $('.cp-search input');
+    t = performance.now();
+    input.value = 'needle-777';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const searchMs = await until(() => app.vm.rowCount === expect.needle777);
+    await frames(2);
+    check('text search filters 100k lines', searchMs >= 0, 'rows ' + app.vm.rowCount + '/' + expect.needle777 + ', ' + Math.round(performance.now() - t) + ' ms incl. 120 ms debounce');
+    check('matches are highlighted', $$('.cp-row mark').length > 0 && $('.cp-row mark').textContent.toLowerCase() === 'needle-777');
+    $$('.cp-search .opt').find((o) => o.textContent === '.*').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    input.value = 'needle-77[0-9]$';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    check('regex search', (await until(() => app.vm.rowCount === expect.regex)) >= 0, app.vm.rowCount + '/' + expect.regex);
+    input.value = 'needle-(';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(200);
+    check('a bad regex marks the box and falls back to text', input.classList.contains('bad'));
+    $$('.cp-search .opt').find((o) => o.textContent === '.*').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => app.vm.rowCount === N);
+    check('Escape clears the search', app.vm.rowCount === N);
+
+    // 4. levels
+    const errBtn = $$('.cp-btn.level')[$$('.cp-btn.level').length - 1];
+    mouse(errBtn, 'click', { altKey: true });
+    await frames(2);
+    check('Alt+click a level shows only it', app.vm.rowCount === entries.filter((e) => e.level === 'error').length && rowTexts().length > 0, app.vm.rowCount);
+    mouse(errBtn, 'click', { altKey: true });
+    await frames(2);
+    check('Alt+click again shows all', app.vm.rowCount === N);
+
+    // 5. chips: solo a tag
+    const net = $$('.cp-chip').find((c) => c.textContent.indexOf('Net') === 0);
+    mouse(net, 'click', { altKey: true });
+    await frames(2);
+    check('solo [Net]', app.vm.rowCount === expect.net && rowTexts().every((s) => s.indexOf('[Net]') === 0), app.vm.rowCount + '/' + expect.net);
+    $('.cp-chips .reset').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await frames(2);
+    check('Show all channels', app.vm.rowCount === N);
+
+    // 6. select, keyboard, copy, open
+    listEl().scrollTop = 99950 * 20 - 100; // an error line
+    listEl().dispatchEvent(new Event('scroll'));
+    await frames(3);
+    const errorRow = $$('.cp-row.error')[0];
+    mouse(errorRow, 'mousedown');
+    await frames(2);
+    check('select a row: highlighted and shown in details', $$('.cp-row.sel').length === 1 && $('.cp-details-body .text').textContent.length > 0);
+    await until(() => $$('.cp-frame a').length > 0);
+    check('details: stack resolved through the main process', $$('.cp-frame a').some((a) => a.textContent === 'assets/Player.ts:30:9'), $$('.cp-frame').map((f) => f.textContent.trim()).join(' | '));
+    check('details: C# link', $$('.cp-frame a.cs').length > 0);
+    const selText = $('.cp-row.sel .msg').textContent;
+    key('ArrowUp');
+    await frames(2);
+    check('ArrowUp moves the selection', $('.cp-row.sel .msg').textContent !== selText);
+    key('ArrowDown', { shiftKey: true });
+    await frames(2);
+    check('Shift+ArrowDown extends it', $$('.cp-row.sel').length === 2);
+    calls.length = 0;
+    const ev = key('c', { ctrlKey: true });
+    await sleep(20);
+    const copied = calls.find((c) => c[0] === 'copy-text');
+    check('Ctrl+C copies the selected lines', ev.defaultPrevented && copied && copied[1].split('\n').length >= 2, copied && copied[1].slice(0, 80));
+    calls.length = 0;
+    mouse($$('.cp-row.error')[0], 'mousedown');
+    mouse($$('.cp-row.error')[0], 'dblclick');
+    await until(() => calls.some((c) => c[0] === 'open-location'));
+    const open = calls.find((c) => c[0] === 'open-location');
+    check('double-click opens the first project frame (C# preferred)', open && open[1].file === 'E:/Fake/assets/Player.cs' && open[1].line === 25, JSON.stringify(open && open[1]));
+    check('toast after opening', !!$('.cp-toast'), $('.cp-toast') && $('.cp-toast').textContent);
+    calls.length = 0;
+    key('Enter');
+    await until(() => calls.some((c) => c[0] === 'open-location'));
+    check('Enter opens too', calls.some((c) => c[0] === 'open-location'));
+    const fEv = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, composed: true, cancelable: true });
+    listEl().dispatchEvent(fEv);
+    check('Ctrl+F focuses the search box', shadow.activeElement === input);
+    listEl().focus();
+
+    // 7. collapse
+    t = performance.now();
+    mouse($$('.cp-toolbar .cp-btn').find((b) => b.textContent === 'Collapse'), 'click');
+    await frames(2);
+    const unique = new Set(entries.map((e) => e.level + '|' + e.source + '|' + e.text + '|' + e.stack.slice(0, 240))).size;
+    check('collapse', app.vm.rowCount === unique, app.vm.rowCount + '/' + unique + ', ' + Math.round(performance.now() - t) + ' ms');
+    // identical messages merge with a count
+    const dup = []; for (let i = 0; i < 5; i++) dup.push({ id: N + 1 + i, t: Date.now(), level: 'log', text: 'same thing', stack: '', source: 'game', tag: '' });
+    app.vm.onEntries(dup);
+    await frames(3);
+    listEl().scrollTop = listEl().scrollHeight; listEl().dispatchEvent(new Event('scroll'));
+    await frames(3);
+    const cnt = $$('.cp-row').filter((r) => r.querySelector('.msg').textContent === 'same thing').map((r) => r.querySelector('.cnt') && r.querySelector('.cnt').textContent);
+    check('collapsed count badge', cnt.length === 1 && cnt[0] === '5', JSON.stringify(cnt));
+    mouse($$('.cp-toolbar .cp-btn').find((b) => b.textContent === 'Collapse'), 'click');
+    await frames(2);
+
+    // 8. live append keeps the list at the bottom
+    listEl().scrollTop = listEl().scrollHeight; listEl().dispatchEvent(new Event('scroll'));
+    await frames(2);
+    const more = []; for (let i = 0; i < 2000; i++) more.push({ id: N + 100 + i, t: Date.now(), level: 'log', text: 'live ' + i, stack: '', source: 'scene', tag: '' });
+    t = performance.now();
+    app.vm.onEntries(more.slice(0, 1000)); app.vm.onEntries(more.slice(0, 1000)); app.vm.onEntries(more.slice(1000));
+    await frames(3);
+    check('append 2000 lines: stays at the bottom, no duplicates', atBottom() && rowTexts().indexOf('live 1999') >= 0 && app.vm.rowCount === N + 5 + 2000, Math.round(performance.now() - t) + ' ms, rows ' + app.vm.rowCount);
+
+    // 9. wrap
+    t = performance.now();
+    mouse($$('.cp-toolbar .cp-btn.icon')[1], 'click');
+    await frames(3);
+    check('wrap relayouts 100k lines', $('.cp-list').classList.contains('wrap'), Math.round(performance.now() - t) + ' ms');
+    input.value = 'second line of';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await until(() => app.vm.rowCount < 1000);
+    await frames(3);
+    const hs = $$('.cp-row').map((r) => r.offsetHeight);
+    check('wrapped multi-line rows are taller', hs.length > 0 && hs.every((h) => h > 40), hs.slice(0, 4).join(','));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    mouse($$('.cp-toolbar .cp-btn.icon')[1], 'click');
+    await frames(2);
+
+    // 10. timestamps, retag, menus, settings
+    mouse($$('.cp-toolbar .cp-btn.icon')[0], 'click');
+    await frames(2);
+    check('timestamps', $$('.cp-row .tm').length > 0 && /^\d\d:\d\d:\d\d\.\d{3}$/.test($('.cp-row .tm').textContent));
+    app.vm.onRetag([{ id: N + 100 + 1999, source: 'game' }]);
+    await frames(2);
+    check('retag updates the source', app.vm.rowCount === N + 2005 && $$('.cp-row').some((r) => r.querySelector('.msg').textContent === 'live 1999' && r.querySelector('.src').textContent === 'game'));
+    calls.length = 0;
+    mouse($$('.cp-toolbar .cp-btn').find((b) => b.textContent === 'Error Pause'), 'click');
+    await sleep(30);
+    check('Error Pause toggles the main-process setting', calls.some((c) => c[0] === 'set-config' && c[1] === 'errorPause' && c[2] === true));
+    mouse($$('.cp-toolbar .cp-btn.icon')[2], 'click');
+    check('More menu', calls.some((c) => c[0] === 'menu' && c[1].indexOf('Export Visible...') >= 0));
+    mouse($$('.cp-row')[0], 'contextmenu');
+    check('row context menu', calls.some((c) => c[0] === 'menu' && c[1].indexOf('Copy Stack') >= 0));
+    app.vm.onPlayState({ playing: true, paused: true, reason: 'error-pause' });
+    await frames(1);
+    check('Error Pause toast', $('.cp-toast') && /Error Pause/.test($('.cp-toast').textContent));
+
+    // 11. UI state persists
+    await sleep(300);
+    let saved = null; try { saved = JSON.parse(localStorage.getItem('console-pro.ui')); } catch (e) {}
+    check('filter/toggle state saved', !saved || saved.time === true, saved ? 'time=' + saved.time : 'no localStorage on file://');
+
+    // 12. clear
+    mouse($$('.cp-toolbar .cp-btn').find((b) => b.textContent === 'Clear'), 'click');
+    await until(() => app.vm.rowCount === 0);
+    await frames(2);
+    check('Clear', app.vm.rowCount === 0 && $('.cp-empty').textContent === 'No messages');
+
+    check('no IPC clone failures / errors', failures.length === 0, failures.join('; '));
+    check('no Vue warnings', vueWarnings.length === 0, vueWarnings.slice(0, 3).join(' || '));
+    // reload with the saved state: a new app over the same history
+    app.dispose();
+    app = createConsoleApp($('#app'));
+    await until(() => $$('.cp-row').length > 0);
+    await frames(2);
+    check('reopened panel shows the history again with saved toggles', app.vm.rowCount === N && $$('.cp-row .tm').length > 0);
+} catch (e) {
+    lines.push('EXCEPTION ' + (e && e.stack || e));
+    bad++;
+}
+const r = document.createElement('div');
+r.id = 'result';
+r.textContent = lines.join('\n') + '\n\n' + ok + ' passed, ' + bad + ' failed';
+document.body.appendChild(r);
+})();
+</script>

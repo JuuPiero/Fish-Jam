@@ -1,0 +1,118 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "media-utils",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js",
+        "smoke": "node ./tests/smoke/run.js"
+    },
+    "description": "i18n:media-utils.description",
+    "main": "./dist/main.js",
+    "dependencies": {},
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@electron/asar": "^3.2.17",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2",
+        "vue": "^3.5.13",
+        "wasm-media-encoders": "^0.7.0"
+    },
+    "panels": {
+        "image-tools": {
+            "title": "Image Tools",
+            "type": "dockable",
+            "main": "dist/panels/image-tools.js",
+            "size": {
+                "min-width": 520,
+                "min-height": 320,
+                "width": 1100,
+                "height": 680
+            }
+        },
+        "audio-editor": {
+            "title": "Audio Editor",
+            "type": "dockable",
+            "main": "dist/panels/audio-editor.js",
+            "size": {
+                "min-width": 560,
+                "min-height": 300,
+                "width": 1200,
+                "height": 560
+            }
+        }
+    },
+    "contributions": {
+        "menu": [
+            {
+                "path": "i18n:menu.panel/Media Utils",
+                "label": "i18n:media-utils.menu.image",
+                "message": "open-image-tools"
+            },
+            {
+                "path": "i18n:menu.panel/Media Utils",
+                "label": "i18n:media-utils.menu.audio",
+                "message": "open-audio-editor"
+            },
+            {
+                "path": "i18n:menu.extension/Media Utils",
+                "label": "i18n:media-utils.menu.image",
+                "message": "open-image-tools"
+            },
+            {
+                "path": "i18n:menu.extension/Media Utils",
+                "label": "i18n:media-utils.menu.audio",
+                "message": "open-audio-editor"
+            },
+            {
+                "path": "i18n:menu.extension/Media Utils",
+                "label": "i18n:media-utils.menu.restore",
+                "message": "restore-last"
+            },
+            {
+                "path": "i18n:menu.extension/Media Utils",
+                "label": "i18n:media-utils.menu.docs",
+                "message": "open-docs"
+            }
+        ],
+        "assets": {
+            "menu": {
+                "methods": "./dist/assets-menu.js",
+                "assetMenu": "onAssetMenu"
+            }
+        },
+        "messages": {
+            "open-image-tools": { "methods": ["openImageTools"] },
+            "open-audio-editor": { "methods": ["openAudioEditor"] },
+            "open-docs": { "methods": ["openDocs"] },
+            "open-assets": { "methods": ["openAssets"] },
+            "take-pending": { "methods": ["takePending"] },
+            "resolve-assets": { "methods": ["resolveAssets"] },
+            "selected-assets": { "methods": ["selectedAssets"] },
+            "pick-files": { "methods": ["pickFiles"] },
+            "pick-folder": { "methods": ["pickFolder"] },
+            "read-file": { "methods": ["readFile"] },
+            "file-info": { "methods": ["fileInfo"] },
+            "image-info": { "methods": ["imageInfo"] },
+            "image-preview": { "methods": ["imagePreview"] },
+            "image-process": { "methods": ["imageProcess"] },
+            "image-capabilities": { "methods": ["imageCapabilities"] },
+            "save-output": { "methods": ["saveOutput"] },
+            "backup-begin": { "methods": ["backupBegin"] },
+            "backup-info": { "methods": ["backupInfo"] },
+            "restore-last": { "methods": ["restoreLast"] },
+            "reveal": { "methods": ["reveal"] },
+            "encoder-wasm": { "methods": ["encoderWasm"] },
+            "media-utils:pending-image": { "methods": ["image-tools.onPending"] },
+            "media-utils:pending-audio": { "methods": ["audio-editor.onPending"] },
+            "media-utils:restored": { "methods": ["image-tools.onRestored", "audio-editor.onRestored"] }
+        }
+    }
+}

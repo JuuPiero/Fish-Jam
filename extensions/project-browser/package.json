@@ -60,6 +60,16 @@
             },
             {
                 "path": "i18n:menu.extension/Project Browser",
+                "label": "i18n:project-browser.menu.import_package",
+                "message": "import-package-menu"
+            },
+            {
+                "path": "i18n:menu.extension/Project Browser",
+                "label": "i18n:project-browser.menu.export_package",
+                "message": "export-package-menu"
+            },
+            {
+                "path": "i18n:menu.extension/Project Browser",
                 "label": "i18n:project-browser.menu.clear_thumbs",
                 "message": "thumb-clear"
             },
@@ -100,6 +110,54 @@
             "reveal-in-assets": {
                 "methods": ["revealInAssets"]
             },
+            "prepare-os-drag": {
+                "methods": ["prepareOsDrag"]
+            },
+            "start-os-drag": {
+                "methods": ["startOsDrag"]
+            },
+            "copy-package": {
+                "methods": ["copyPackage"]
+            },
+            "read-clipboard": {
+                "methods": ["readClipboard"]
+            },
+            "probe-paths": {
+                "methods": ["probePaths"]
+            },
+            "inside-project": {
+                "methods": ["insideProject"]
+            },
+            "open-package": {
+                "methods": ["openPackage"]
+            },
+            "classify-package": {
+                "methods": ["classifyPackage"]
+            },
+            "import-package": {
+                "methods": ["importPackage"]
+            },
+            "close-package": {
+                "methods": ["closePackage"]
+            },
+            "collect-export": {
+                "methods": ["collectExport"]
+            },
+            "export-package": {
+                "methods": ["exportPackage"]
+            },
+            "zip-has-manifest": {
+                "methods": ["zipHasManifest"]
+            },
+            "import-package-menu": {
+                "methods": ["importPackageMenu"]
+            },
+            "export-package-menu": {
+                "methods": ["exportPackageMenu"]
+            },
+            "take-pending-menu": {
+                "methods": ["takePendingMenu"]
+            },
             "asset-db:ready": {
                 "methods": ["project.onAssetsChanged"]
             },
@@ -123,6 +181,9 @@
             },
             "ui-kit:touch-asset": {
                 "methods": ["project.onTouchAsset"]
+            },
+            "project-browser:package-menu": {
+                "methods": ["project.onPackageMenu"]
             }
         }
     }

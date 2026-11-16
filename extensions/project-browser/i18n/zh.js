@@ -6,5 +6,7 @@ module.exports = {
         project: 'Project',
         clear_thumbs: 'Clear Thumbnail Cache',
         docs: 'Open README',
+        import_package: 'Import Asset Package...',
+        export_package: 'Export Package...',
     },
 };
