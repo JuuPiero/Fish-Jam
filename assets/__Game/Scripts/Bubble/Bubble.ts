@@ -1,4 +1,4 @@
-import { _decorator, CircleCollider2D, Collider2D, Color, Component, Contact2DType, ICollisionEvent, instantiate, IPhysics2DContact, Node, RigidBody2D, Size, Sprite, UITransform, tween, Tween, Vec3 } from 'cc';
+import { _decorator, CircleCollider2D, Collider2D, Color, Component, Contact2DType, ICollisionEvent, instantiate, IPhysics2DContact, Node, RigidBody2D, Size, Sprite, UITransform, tween, Tween, Vec3, CCFloat } from 'cc';
 import { BubbleData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
@@ -22,29 +22,25 @@ export class Bubble extends Component {
 
     @property({ readonly: true, type: [Fish] }) fishes: Fish[] = []
 
-    @property({ tooltip: 'Visual scale applied to fish while they remain inside this bubble' })
-    fishScale: number = 1.2;
+    // Sizing is a port of Unity's GameItemGroupController (GameItemGroup.prefab): the bubble's
+    // radius comes from a table by fish count, not from the fish, and the fish sit on a ring
+    // with a fixed distance between neighbours. Both engines fit the screen height (Unity's
+    // camera shows 23.4 units, Cocos 1920 px), so one Unity unit is about 82 px here.
+    @property({ tooltip: 'Pixels per Unity unit. Unity shows 23.4 units of height, Cocos 1920 px: 1920 / 23.4 = 82.' })
+    unitPx: number = 82;
 
-    // A small visual overlap makes the fish cluster feel fuller and lets the bubble stay compact.
-    private static readonly FISH_OVERLAP = 8;
-    // Keep small groups compact; the packing routine grows the bubble only when a particular
-    // random layout genuinely needs more room.
-    private static readonly MIN_RADIUS = 55;
+    @property({ tooltip: "Visual scale of a fish inside a bubble. Unity's own would be 0.95 x unitPx / 100 = 0.78; raised to 0.9, which read better here." })
+    fishScale: number = 0.9;
 
-    @property({ tooltip: 'Smallest extra gap between neighboring fish in a bubble' })
-    fishGapMin: number = -2;
+    @property({type: [CCFloat], tooltip: "Unity's bubbleScales: bubble radius in Unity units for 1, 2, 3, 4, 5+ fish (the collider radius is 1)." })
+    bubbleScales: number[] = [1, 1.25, 1.5, 1.8, 2.15];
 
-    @property({ tooltip: 'Largest extra gap between neighboring fish in a bubble' })
-    fishGapMax: number = 10;
+    @property({type: [CCFloat], tooltip: "Distance in Unity units between neighbouring fish, by the bubble's spawn fish count. Unity's itemDistances are 0.75 (0.68 for 5); widened here to go with the larger fishScale, still inside each bubble's radius." })
+    itemDistances: number[] = [1.5, 1.5, 1.5, 1.5, 1.2];
 
-    @property({ tooltip: 'Smallest empty space between the fish ring and bubble edge' })
-    bubbleEdgePaddingMin: number = 5;
-
-    @property({ tooltip: 'Largest empty space between the fish ring and bubble edge' })
-    bubbleEdgePaddingMax: number = 23;
-
-    private _fishGap = 0;
-    private _bubbleEdgePadding = 10;
+    // Fixed at spawn, like Unity: the bubble keeps its size as fish leave, and the ring of the
+    // remaining fish closes in with the same neighbour distance.
+    private _itemDistancePx = 0;
 
     // Only bounce when the bubble is actually moving with some speed - e.g. floating up at the
     // start, or resettling after a neighbor gets destroyed. Bubbles already at rest constantly
@@ -114,8 +110,6 @@ export class Bubble extends Component {
     private _removePunchTween: Tween<Node> | null = null;
     private _arrangeDelayTween: Tween<Node> | null = null;
     private _arrangeFishTweens: Tween<Node>[] = [];
-    private _fishLayoutAngle = 0;
-    private _fishLayoutSpacing = 1;
     private _baseRootScale = new Vec3(1, 1, 1);
 
     protected onLoad(): void {
@@ -140,52 +134,46 @@ export class Bubble extends Component {
         return this.radius;
     }
 
-    // Resize the bubble to fit its fishes. Fish are arranged in a balanced circle around the
-    // center, using each fish's largest dimension to keep their visuals from overlapping too far.
+    // Unity's ApplyBubbleScale: the radius comes from the spawn fish count through bubbleScales,
+    // and the neighbour distance through itemDistances; the fish's own size plays no part.
     calculateRadius() {
         const count = this.fishes.length;
         if (count === 0) {
             return;
         }
 
-        const fishRadii = this.fishes.map(fish => {
-            const size = fish.getSize();
-            return Math.max(size.width, size.height) * 0.5;
-        });
-        const maxFishRadius = Math.max(...fishRadii);
-        this._fishLayoutSpacing = 1 + Math.random() * 0.06;
-        this._fishLayoutAngle = Math.random() * Math.PI * 2;
-        const bubbleRadius = this.positionFishesInCircle(fishRadii, maxFishRadius, false);
+        const bubbleRadius = this.sizeEntry(this.bubbleScales, count, 1) * this.unitPx;
+        this._itemDistancePx = this.sizeEntry(this.itemDistances, count, 0.75) * this.unitPx;
+        this.positionFishesInCircle(false);
 
         this.radius = bubbleRadius;
         this._visualTransform.setContentSize(bubbleRadius * 2, bubbleRadius * 2);
         this._collider.radius = bubbleRadius;
     }
 
-    private positionFishesInCircle(fishRadii: number[], maxFishRadius: number, animate: boolean): number {
+    // Unity's SizeEntry: entry count-1, clamped to the table's ends.
+    private sizeEntry(table: number[], count: number, fallback: number): number {
+        if (!table || table.length === 0) {
+            return fallback;
+        }
+        return table[Math.max(0, Math.min(count - 1, table.length - 1))];
+    }
+
+    // Unity's GetArrangedLocalPosition: a ring whose neighbours are exactly _itemDistancePx
+    // apart, starting at 90 degrees, so 2 fish stand one above the other, 3 make a triangle
+    // pointing up and 4 a diamond.
+    private positionFishesInCircle(animate: boolean): void {
         const count = this.fishes.length;
         if (count === 1) {
             this.moveFishTo(this.fishes[0], new Vec3(), animate);
-            return Math.max(Bubble.MIN_RADIUS, maxFishRadius + this._bubbleEdgePadding);
+            return;
         }
 
-        const angleStep = (Math.PI * 2) / count;
-        let ringRadius = 0;
-        for (let index = 0; index < count; index++) {
-            const nextIndex = (index + 1) % count;
-            const minCenterDistance = fishRadii[index] + fishRadii[nextIndex]
-                - Bubble.FISH_OVERLAP + this._fishGap;
-            ringRadius = Math.max(ringRadius, minCenterDistance / (2 * Math.sin(angleStep * 0.5)));
-        }
-
-        // Preserve the initial orientation and spacing after each removal, so the remaining
-        // fish settle inward instead of visibly rerolling to a brand new arrangement.
-        ringRadius *= this._fishLayoutSpacing;
+        const ringRadius = this._itemDistancePx / (2 * Math.sin(Math.PI / count));
         this.fishes.forEach((fish, index) => {
-            const angle = this._fishLayoutAngle + angleStep * index;
+            const angle = Math.PI * 0.5 + (Math.PI * 2 * index) / count;
             this.moveFishTo(fish, new Vec3(Math.cos(angle) * ringRadius, Math.sin(angle) * ringRadius, 0), animate);
         });
-        return Math.max(Bubble.MIN_RADIUS, ringRadius + maxFishRadius + this._bubbleEdgePadding);
     }
 
     // Called when a fish inside this bubble gets clicked and flies off. Detaches it from the
@@ -276,11 +264,7 @@ export class Bubble extends Component {
         }
         this._arrangeFishTweens = [];
 
-        const fishRadii = this.fishes.map(remainingFish => {
-            const size = remainingFish.getSize();
-            return Math.max(size.width, size.height) * 0.5;
-        });
-        this.positionFishesInCircle(fishRadii, Math.max(...fishRadii), true);
+        this.positionFishesInCircle(true);
     }
 
     private moveFishTo(fish: Fish, position: Vec3, animate: boolean): void {
@@ -356,10 +340,6 @@ export class Bubble extends Component {
     }
 
     initiallize(data: BubbleData) {
-        // Each bubble gets a stable layout variation at spawn: fish still form one centered
-        // circle, but same-count bubbles no longer all have identical diameters.
-        this._fishGap = this.randomRange(this.fishGapMin, this.fishGapMax);
-        this._bubbleEdgePadding = this.randomRange(this.bubbleEdgePaddingMin, this.bubbleEdgePaddingMax);
         const fishPrefab = ServiceLocator.get(GameConfigSA).fishPrefab;
         //spawn fishes
         for (const fishId of data.fishes) {

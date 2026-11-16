@@ -3907,7 +3907,7 @@
       "__id__": 36
     },
     "topBorder": null,
-    "bubbleGap": 20,
+    "bubbleGap": 4,
     "spawnColumns": 48,
     "maxBubblesOnScreen": 13,
     "_id": "40aPZ/JzxBnL7ixRqwBoDP"

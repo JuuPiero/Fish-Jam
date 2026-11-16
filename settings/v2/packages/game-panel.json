@@ -7,8 +7,8 @@
     "previewWhenStopped": true,
     "showStats": false,
     "custom": [],
-    "viewMode": "game",
-    "deviceId": "iphone-14-pro",
+    "viewMode": "simulator",
+    "deviceId": "iphone-16-pro-max",
     "orientation": "portrait",
     "showSafeArea": true,
     "resizeSceneView": false
