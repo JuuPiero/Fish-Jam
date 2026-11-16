@@ -2272,7 +2272,7 @@
     "spacing": 230,
     "count": 20,
     "beltSpeed": 70,
-    "beltLeftLimit": -1750,
+    "compactSpeed": 600,
     "interactableLeft": -559.186,
     "interactableRight": 547.03,
     "maxSameOrderInARow": 20,
@@ -6205,6 +6205,9 @@
     },
     "happyFace": {
       "__id__": 262
+    },
+    "loseLabel": {
+      "__id__": 276
     },
     "logo": {
       "__id__": 257

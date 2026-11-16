@@ -24,9 +24,6 @@ export class OrderManager extends Component {
     @property({ tooltip: 'Speed in units/second at which the orders behind a removed one slide up to close its gap.' })
     compactSpeed: number = 600;
 
-    @property({ tooltip: 'Local X at which an order wraps back to the right side of the conveyor.' })
-    beltLeftLimit: number = -717.217;
-
     @property({ tooltip: "Left edge of the area where orders take fish, in OrderContainer local X. Follows the screen's left edge at runtime (resize, rotation); this value is only the fallback when the Canvas camera cannot be read." })
     interactableLeft: number = -559.186;
 
@@ -138,10 +135,11 @@ export class OrderManager extends Component {
         }
 
         for (let slotIndex = 0; slotIndex < this.count; slotIndex++) {
-            if (!this.createOrder(orderPrefab, this.beltLeftLimit + slotIndex * this.spacing)) {
+            if (!this.createOrder(orderPrefab)) {
                 break;
             }
         }
+        this.layOutBelt();
     }
 
     // Original round-robin queue setup - only reached when diffCurveType is None, kept exactly as
@@ -195,11 +193,64 @@ export class OrderManager extends Component {
         for (let i = 0; i < visibleCount; i++) {
             const orderNode = instantiate(orderPrefab);
             orderNode.setParent(this.orderContainer);
-            orderNode.setPosition(this.beltLeftLimit + i * this.spacing, 0, 0);
 
             const order = orderNode.getComponent(Order);
             order.initialize(queue[i]);
             this.orders.push(order);
+        }
+        this.layOutBelt();
+    }
+
+    // The belt is a loop as long as its orders (count x spacing), from beltLeft() rightwards; each
+    // order sits in the middle of its own spacing-wide cell.
+    private layOutBelt(): void {
+        const left = this.beltLeft();
+        this.orders.forEach((order, index) => {
+            order.node.setPosition(left + (index + 0.5) * this.spacing, 0, 0);
+        });
+        this.applyBeltEndScales();
+    }
+
+    private beltLength(): number {
+        let count = 0;
+        for (const order of this.orders) {
+            if (order.node.active) {
+                count++;
+            }
+        }
+        return count * this.spacing;
+    }
+
+    // Where the loop starts. While the orders fit on screen (few left, or a wide landscape screen)
+    // the loop shrinks to just them, centred on the screen, so an order is never carried far off
+    // screen and back. Otherwise it starts one cell past the screen's left edge, so an order wraps
+    // round only once it is out of sight.
+    private beltLeft(): number {
+        const length = this.beltLength();
+        const visibleWidth = this.interactableRight - this.interactableLeft;
+        if (length <= visibleWidth) {
+            return (this.interactableLeft + this.interactableRight - length) * 0.5;
+        }
+        return this.interactableLeft - this.spacing;
+    }
+
+    // An order shrinks to nothing over the last half cell before the loop's left end and grows back
+    // over the first half cell after it reappears at the right end, so a wrap seen on screen (a
+    // short loop) reads as the bowl sinking into the belt and coming back up, never as a jump.
+    // The right end is judged by the order's settled place (after any gap-closing still due), so
+    // closing a gap does not shrink the orders behind it on the way.
+    private applyBeltEndScales(): void {
+        const left = this.beltLeft();
+        const right = left + this.beltLength();
+        const zone = this.spacing * 0.5;
+        for (const order of this.orders) {
+            if (!order.node.active) {
+                continue;
+            }
+            const x = order.node.position.x;
+            const settledX = x - (this._compactShift.get(order) ?? 0);
+            const scale = Math.max(0, Math.min(1, (x - left) / zone, (right - settledX) / zone));
+            order.node.setScale(scale, scale, 1);
         }
     }
 
@@ -213,6 +264,8 @@ export class OrderManager extends Component {
         }
         const beltDelta = this._beltEnabled ? this.beltSpeed * dt : 0;
         const compactStep = this.compactSpeed * dt;
+        const left = this.beltLeft();
+        const wasInteractable = this.orders.map(order => this.isOrderInteractable(order));
         for (const order of this.orders) {
             if (!order.node.active) {
                 continue;
@@ -229,24 +282,24 @@ export class OrderManager extends Component {
             }
 
             const position = order.node.position;
-            const wasInteractable = this.isInInteractableArea(position.x);
             let x = position.x - beltDelta - step;
-            if (x < this.beltLeftLimit) {
-                // Append directly after the rightmost live order instead of using a fixed belt
-                // length. This keeps the spacing seamless even if the designer moves the left
-                // wrap marker much farther off-screen. The rightmost one may still be closing a
-                // gap, so its place once settled is what counts.
+            if (x < left) {
+                // Append directly after the rightmost live order, judged by its settled place (it
+                // may still be closing a gap), so the spacing stays even round the loop.
                 const rightmostX = Math.max(...this.orders
                     .filter(candidate => candidate !== order && candidate.node.active)
                     .map(candidate => candidate.node.position.x - (this._compactShift.get(candidate) ?? 0)));
-                x = Number.isFinite(rightmostX) ? rightmostX + this.spacing : this.interactableRight;
+                x = Number.isFinite(rightmostX) ? rightmostX + this.spacing : left + this.spacing * 0.5;
                 this._compactShift.delete(order);
             }
             order.node.setPosition(x, position.y, position.z);
-            if (!wasInteractable && this.isInInteractableArea(x)) {
+        }
+        this.applyBeltEndScales();
+        this.orders.forEach((order, index) => {
+            if (!wasInteractable[index] && this.isOrderInteractable(order)) {
                 EventBus.emit(GameEvents.ORDER_READY, order);
             }
-        }
+        });
     }
 
     // Removes a finished order with no next id from the belt, and has every order behind it (to its
@@ -263,8 +316,11 @@ export class OrderManager extends Component {
         }
     }
 
+    // On screen and at full size: a bowl shrinking into or growing out of a belt end takes no fish.
     isOrderInteractable(order: Order): boolean {
-        return order.node.active && this.isInInteractableArea(order.node.position.x);
+        return order.node.active
+            && order.node.scale.x >= 0.999
+            && this.isInInteractableArea(order.node.position.x);
     }
 
     private isInInteractableArea(x: number): boolean {
@@ -477,7 +533,8 @@ export class OrderManager extends Component {
         return instantWin.length > 0 ? instantWin : maxReachableAmong(reachable);
     }
 
-    private createOrder(orderPrefab: Prefab, x: number): boolean {
+    // Placed by layOutBelt once the whole batch exists.
+    private createOrder(orderPrefab: Prefab): boolean {
         const id = this.pickNextOrderId();
         if (id === null) {
             return false;
@@ -486,7 +543,6 @@ export class OrderManager extends Component {
         const requiredCount = this.reserveOrderFish(id);
         const orderNode = instantiate(orderPrefab);
         orderNode.setParent(this.orderContainer);
-        orderNode.setPosition(x, 0, 0);
 
         const order = orderNode.getComponent(Order);
         if (!order) {
