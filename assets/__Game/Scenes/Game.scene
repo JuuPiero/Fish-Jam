@@ -6422,7 +6422,7 @@
         "__expectedType__": "cc.JsonAsset"
       },
       {
-        "__uuid__": "ef9cd231-41db-4409-810b-ab4b12fd9d61",
+        "__uuid__": "f6979b2f-64ad-40dc-970c-391ee79d4b71",
         "__expectedType__": "cc.JsonAsset"
       }
     ],
@@ -7052,6 +7052,7 @@
       1.4,
       1.2
     ],
+    "forceStoreStep": 40,
     "_id": "bbr33oiUNEpZOEYHq6X8V5"
   },
   {

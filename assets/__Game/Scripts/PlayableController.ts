@@ -1,4 +1,4 @@
-import { CCFloat, CCInteger, Color, Camera } from 'cc';
+import { CCFloat, Color, Camera, CCInteger } from 'cc';
 import { _decorator, Component, Node, Vec2, Vec3 } from 'cc';
 import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
