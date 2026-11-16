@@ -1,4 +1,4 @@
-import { CCFloat, Color, Camera } from 'cc';
+import { CCFloat, Color, Camera, CCInteger } from 'cc';
 import { _decorator, Component, Node, Vec2, Vec3 } from 'cc';
 import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
@@ -36,6 +36,9 @@ export class PlayableController extends Component {
     // Read by Bubble when it is built: distance between neighbouring fish, in Unity units, by the bubble's fish count.
     @playGroundField({ type: [CCFloat], group: "PLAYABLE" })
     itemDistances: number[] = [1.4, 1.4, 1.4, 1.4, 1.2];
+
+
+    @playGroundField({type: CCInteger, group: "PLAYABLE"}) forceStoreStep: number = 40;
 
     // Registered in onLoad, before GameManager.start builds the first level's bubbles.
     onLoad() {
