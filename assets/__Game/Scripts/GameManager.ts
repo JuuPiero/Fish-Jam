@@ -1,4 +1,4 @@
-import { _decorator, Component, EventKeyboard, KeyCode, Node, RealCurve } from 'cc';
+import { _decorator, Camera, Canvas, Component, EventKeyboard, find, KeyCode, Node, RealCurve } from 'cc';
 import { EventBus } from '../../_iKame/Scripts/EventBus';
 import { GameEvents } from './GameEvents';
 import { LevelManager } from './LevelManager';
@@ -25,9 +25,6 @@ export class GameManager extends Component {
     flyLayer: Node = null;
 
 
-    @property(RealCurve) diffCurve: RealCurve = new RealCurve()
-
-
 
     private _isGameOver = false;
     public get IsGameOver(): boolean {
@@ -50,6 +47,7 @@ export class GameManager extends Component {
     }
 
     protected onDisable(): void {
+        this.unschedule(this.checkDeadEndAtCriticalSlots);
         EventBus.off(GameEvents.NEW_LEVEL, this.onNewGame);
         EventBus.off(GameEvents.LEVEL_WIN, this.onWinGame);
         EventBus.off(GameEvents.LEVEL_LOSE, this.onLoseGame);
@@ -74,6 +72,11 @@ export class GameManager extends Component {
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
         this.total = this.levelManager.currentLevel.getTotalFishes() / 3;
+
+        // Also poll the live board: depending on the exact flight/tween ordering, a fish's
+        // landing callback may not be the final state change that creates a dead end.
+        this.unschedule(this.checkDeadEndAtCriticalSlots);
+        this.schedule(this.checkDeadEndAtCriticalSlots, 0.25);
 
         ServiceLocator.get(FishCountUI).updateUI()
 
@@ -216,12 +219,66 @@ export class GameManager extends Component {
         const parked = slotManager.park(fish, this.flyLayer, () => {
             if (!slotManager.hasPendingParkArrivals() && !slotManager.hasFreeSlot()) {
                 EventBus.emit(GameEvents.LEVEL_LOSE);
+                return;
             }
+
+            this.checkDeadEndAtCriticalSlots();
         });
         if (!parked) {
             EventBus.emit(GameEvents.LEVEL_LOSE);
             return;
         }
+    }
+
+    // The playable should not leave the player in a dead-end state: at least four of five slots
+    // are occupied, but none of the fish still visible in bubbles can fill an open order. Check
+    // this periodically as well as on landing so a completed tween cannot leave the game stuck.
+    private checkDeadEndAtCriticalSlots = (): void => {
+        if (this._isGameOver) {
+            return;
+        }
+
+        const { bubbleManager, orderManager, slotManager } = this.levelManager;
+        if (slotManager.getSlotCount() === 0 ||
+            slotManager.getOccupiedCount() < slotManager.getSlotCount() - 1 ||
+            slotManager.hasPendingParkArrivals()) {
+            return;
+        }
+
+        const activeOrders = orderManager.orders.filter(order => order.node.active);
+        if (activeOrders.some(order => order.isBusy)) {
+            return;
+        }
+
+        const camera = this.getBoardCamera();
+        if (!camera) {
+            return;
+        }
+
+        // Fish the player can see in bubbles, plus bench fish (a bench fish matching an order is
+        // pulled onto it, which frees a slot).
+        const fishCounts = new Map<number, number>();
+        bubbleManager.collectVisibleFishCounts(fishCounts, camera);
+        slotManager.collectWaitingFishCounts(fishCounts);
+        const hasVisibleMatch = activeOrders.some(order =>
+            order.remainingCount > 0 && (fishCounts.get(order.id) ?? 0) > 0,
+        );
+        if (!hasVisibleMatch) {
+            // In a real playable this immediately invokes the platform CTA. The lose event also
+            // keeps the game state and end-card UI in sync when running in the Cocos preview.
+            PlayableAdsManager.OpenStore();
+            EventBus.emit(GameEvents.LEVEL_LOSE);
+        }
+    }
+
+    private _boardCamera: Camera | null = null;
+
+    // The Canvas's own camera draws the board (CameraTutorial only copies it).
+    private getBoardCamera(): Camera | null {
+        if (!this._boardCamera || !this._boardCamera.isValid) {
+            this._boardCamera = find('Canvas')?.getComponent(Canvas)?.cameraComponent ?? null;
+        }
+        return this._boardCamera;
     }
 
 }

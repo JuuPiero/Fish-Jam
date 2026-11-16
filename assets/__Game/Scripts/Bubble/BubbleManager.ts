@@ -1,10 +1,11 @@
-import { _decorator, Component, instantiate, Node } from 'cc';
+import { _decorator, Camera, CCInteger, Component, instantiate, Node } from 'cc';
 import { LevelData } from '../Data/LevelData';
 import { ServiceLocator } from 'db://assets/_iKame/Scripts/ServiceLocator';
 import { GameConfigSA } from '../Data/GameConfigSA';
 import { Bubble } from './Bubble';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
+import { playGroundField } from 'db://cocos-playground/PlayGroundField';
 const { ccclass, property } = _decorator;
 
 interface PendingBubble {
@@ -34,12 +35,13 @@ export class BubbleManager extends Component {
     @property({ tooltip: 'Number of lanes considered when packing bubbles.' })
     spawnColumns: number = 48;
 
-    @property({ tooltip: "Unity's maxGroupsOnScreen. The opening batch fills up to this many " +
-                          'bubbles at once; the rest queue up and spawn one at a time, below the ' +
-                          'screen, whenever a bubble pops and the board drops under this count. ' +
-                          "Unity can get away with a small cap because PlayZoneMask hides its " +
-                          "below-screen overflow outright; Cocos has no such mask, only physical " +
-                          "depth, so this is set higher to still read as a full board." })
+    // @property({ tooltip: "Unity's maxGroupsOnScreen. The opening batch fills up to this many " +
+    //                       'bubbles at once; the rest queue up and spawn one at a time, below the ' +
+    //                       'screen, whenever a bubble pops and the board drops under this count. ' +
+    //                       "Unity can get away with a small cap because PlayZoneMask hides its " +
+    //                       "below-screen overflow outright; Cocos has no such mask, only physical " +
+    //                       "depth, so this is set higher to still read as a full board." })
+    @playGroundField({type: CCInteger})
     maxBubblesOnScreen: number = 18;
 
     private _pendingBubbles: PendingBubble[] = [];
@@ -170,6 +172,31 @@ export class BubbleManager extends Component {
             }
             for (const fish of bubble.fishes) {
                 counts.set(fish.id, (counts.get(fish.id) ?? 0) + 1);
+            }
+        }
+    }
+
+    // Like collectReachableFishCounts, but only fish the player can actually see: the board packs
+    // up to maxBubblesOnScreen bubbles, and the overflow sits active but below the bottom of the
+    // screen (no mask here), so counting every active bubble almost always finds a match.
+    // A fish counts when its centre is inside the camera's vertical view.
+    collectVisibleFishCounts(counts: Map<number, number>, camera: Camera): void {
+        const camY = camera.node.worldPosition.y;
+        const bottom = camY - camera.orthoHeight;
+        const top = camY + camera.orthoHeight;
+        for (const child of this.node.children) {
+            if (!child.active) {
+                continue;
+            }
+            const bubble = child.getComponent(Bubble);
+            if (!bubble) {
+                continue;
+            }
+            for (const fish of bubble.fishes) {
+                const y = fish.node.worldPosition.y;
+                if (y >= bottom && y <= top) {
+                    counts.set(fish.id, (counts.get(fish.id) ?? 0) + 1);
+                }
             }
         }
     }

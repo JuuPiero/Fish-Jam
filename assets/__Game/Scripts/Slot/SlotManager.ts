@@ -111,6 +111,16 @@ export class SlotManager extends Component {
         return this._occupants.some(fish => fish === null);
     }
 
+    // Number of fish currently reserved on the waiting bench. A fish starts counting as soon as
+    // it is sent toward a slot, rather than only after its landing animation has finished.
+    getOccupiedCount(): number {
+        return this._occupants.filter(fish => fish !== null).length;
+    }
+
+    getSlotCount(): number {
+        return this._occupants.length;
+    }
+
     hasPendingParkArrivals(): boolean {
         return this._pendingParkArrivals.size > 0;
     }

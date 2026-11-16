@@ -73,6 +73,12 @@ export class Order extends Component {
         return this._isPoppingIn || this._claimedCount >= this.requiredCount;
     }
 
+    // Still changing on its own: popping in, or a fish is flying here (it may complete the order
+    // and bring a new id). A dead-end check must wait for it rather than judge the old state.
+    get isBusy(): boolean {
+        return this._isPoppingIn || this._claimedCount > this._deliveredCount;
+    }
+
     get remainingCount(): number {
         return Math.max(0, this.requiredCount - this._claimedCount);
     }
