@@ -484,7 +484,7 @@
     "spineAnim": {
       "__id__": 11
     },
-    "flySpeed": 1400,
+    "flySpeed": 1600,
     "flyMinDuration": 0.55,
     "flyWaypointOffset": 100,
     "flySlotApproachDistance": 65,

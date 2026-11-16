@@ -259,7 +259,7 @@ export class OrderManager extends Component {
             }
             this._pendingOrders.splice(i, 1);
             pending.node.active = true;
-            pending.reset(nextId);
+            pending.reset(nextId, undefined, true);
             filledAny = true;
         }
         if (filledAny) {
