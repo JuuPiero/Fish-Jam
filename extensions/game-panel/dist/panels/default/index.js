@@ -23174,17 +23174,59 @@ var pie = null, binaryOk = !0, lastProbe = null, aspect = createAspectController
 function aspectContainer(el) {
   return el.parentElement || el.getRootNode().host || null;
 }
+function rectOf(el) {
+  let r = el.getBoundingClientRect();
+  return [Math.round(r.x * 10) / 10, Math.round(r.y * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10];
+}
 function describeElement(el) {
   if (!el) return null;
-  let r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  let cs = getComputedStyle(el);
   return {
     tag: el.tagName,
     id: el.id,
     className: String(el.className || ""),
+    attributes: Array.from(el.attributes || []).map((a) => a.name).filter((n) => n !== "style" && n !== "class"),
     style: el.getAttribute("style"),
-    computed: { position: cs.position, display: cs.display, width: cs.width, height: cs.height, transform: cs.transform, left: cs.left, top: cs.top },
-    rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]
+    computed: {
+      position: cs.position,
+      display: cs.display,
+      width: cs.width,
+      height: cs.height,
+      transform: cs.transform,
+      left: cs.left,
+      top: cs.top,
+      margin: cs.margin,
+      flex: cs.flex,
+      pointerEvents: cs.pointerEvents,
+      zoom: cs.zoom
+    },
+    rect: rectOf(el)
   };
+}
+var pressProbe = {
+  target: null,
+  last: null,
+  onDown: (e) => {
+    var _a;
+    let el = pie == null ? void 0 : pie.el;
+    if (!el) return;
+    let box = aspectContainer(el);
+    pressProbe.last = {
+      at: (/* @__PURE__ */ new Date()).toISOString().slice(11, 23),
+      client: [e.clientX, e.clientY],
+      button: e.button,
+      target: ((_a = e.target) == null ? void 0 : _a.tagName) ?? null,
+      webviewRect: rectOf(el),
+      containerRect: box ? rectOf(box) : null,
+      relativeToWebview: [Math.round((e.clientX - el.getBoundingClientRect().x) * 10) / 10, Math.round((e.clientY - el.getBoundingClientRect().y) * 10) / 10],
+      relativeToContainer: box ? [Math.round((e.clientX - box.getBoundingClientRect().x) * 10) / 10, Math.round((e.clientY - box.getBoundingClientRect().y) * 10) / 10] : null,
+      devicePixelRatio: window.devicePixelRatio || 1
+    };
+  }
+};
+function watchPresses(on) {
+  let box = on && pie ? aspectContainer(pie.el) : null;
+  pressProbe.target && pressProbe.target !== box && (pressProbe.target.removeEventListener("mousedown", pressProbe.onDown, !0), pressProbe.target = null), box && !pressProbe.target && (box.addEventListener("mousedown", pressProbe.onDown, { capture: !0, passive: !0 }), pressProbe.target = box);
 }
 function pieElementInfo() {
   let el = pie == null ? void 0 : pie.el;
@@ -23194,7 +23236,9 @@ function pieElementInfo() {
   return {
     webview: describeElement(el),
     parents: chain,
-    aspect: aspect.info()
+    aspect: aspect.info(),
+    devicePixelRatio: window.devicePixelRatio || 1,
+    lastPress: pressProbe.last
   };
 }
 function call(method, ...args) {
@@ -23214,7 +23258,7 @@ var editorBridge = {
       lastProbe = { edit, webviews: probes.map((p) => p.info) };
       let best = probes.filter((p) => p.info.who && (!edit || p.info.who.instance !== edit.instance)).sort((a, b) => +!!b.info.who.previewPaused - +!!a.info.who.previewPaused || +!!b.info.visible - +!!a.info.visible)[0];
       if (best && best.info.who.previewPaused) {
-        pie = { el: best.el, who: best.info.who };
+        pie = { el: best.el, who: best.info.who }, watchPresses(!0);
         return;
       }
       if (edit && edit.previewPaused) return;
@@ -23223,10 +23267,13 @@ var editorBridge = {
     throw new Error("Could not reach the Play-in-Editor scene view");
   },
   disconnectPie() {
-    aspect.release(), pie = null;
+    aspect.release(), watchPresses(!1), pie = null;
   },
   setGameAspect(value) {
     aspect.set(pie ? pie.el : null, value);
+  },
+  setSafeArea(insets) {
+    return pie ? callWebview(pie.el, "gpSafeArea", [insets]) : Promise.resolve(!1);
   },
   async frame(req) {
     var _a;
@@ -23331,8 +23378,335 @@ function fromBase64(data) {
   return out;
 }
 
+// source/devices.ts
+var ZERO = { top: 0, bottom: 0, left: 0, right: 0 };
+function ins(top, bottom, left = 0, right = 0) {
+  return { top, bottom, left, right };
+}
+function pt(scale, top, bottom, left = 0, right = 0) {
+  return ins(top * scale, bottom * scale, left * scale, right * scale);
+}
+var NOTCH_IPHONE = (scale, top) => ({
+  portrait: pt(scale, top, 34),
+  landscape: pt(scale, 0, 21, top, top)
+}), DEVICES = [
+  {
+    id: "iphone-se3",
+    name: "iPhone SE (3rd gen)",
+    brand: "Apple",
+    width: 750,
+    height: 1334,
+    scale: 2,
+    dpi: 326,
+    screenRadius: 0,
+    bezel: { side: 56, top: 220, bottom: 220 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    homeButton: !0,
+    safe: { portrait: ZERO, landscape: ZERO }
+  },
+  {
+    id: "iphone-8",
+    name: "iPhone 8",
+    brand: "Apple",
+    width: 750,
+    height: 1334,
+    scale: 2,
+    dpi: 326,
+    screenRadius: 0,
+    bezel: { side: 56, top: 220, bottom: 220 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    homeButton: !0,
+    safe: { portrait: ZERO, landscape: ZERO }
+  },
+  {
+    id: "iphone-x",
+    name: "iPhone X / XS / 11 Pro",
+    brand: "Apple",
+    width: 1125,
+    height: 2436,
+    scale: 3,
+    dpi: 458,
+    screenRadius: 117,
+    bezel: { side: 77, top: 77, bottom: 77 },
+    cutout: { kind: "notch", width: 627, height: 90, top: 0 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 44)
+  },
+  {
+    id: "iphone-11",
+    name: "iPhone 11 / XR",
+    brand: "Apple",
+    width: 828,
+    height: 1792,
+    scale: 2,
+    dpi: 326,
+    screenRadius: 83,
+    bezel: { side: 72, top: 72, bottom: 72 },
+    cutout: { kind: "notch", width: 460, height: 66, top: 0 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(2, 48)
+  },
+  {
+    id: "iphone-13",
+    name: "iPhone 13 / 14",
+    brand: "Apple",
+    width: 1170,
+    height: 2532,
+    scale: 3,
+    dpi: 460,
+    screenRadius: 142,
+    bezel: { side: 62, top: 62, bottom: 62 },
+    cutout: { kind: "notch", width: 486, height: 96, top: 0 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 47)
+  },
+  {
+    id: "iphone-14-pro",
+    name: "iPhone 14 Pro / 15 / 15 Pro / 16",
+    brand: "Apple",
+    width: 1179,
+    height: 2556,
+    scale: 3,
+    dpi: 460,
+    screenRadius: 165,
+    bezel: { side: 50, top: 50, bottom: 50 },
+    cutout: { kind: "island", width: 378, height: 112, top: 33 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 59)
+  },
+  {
+    id: "iphone-15-pro-max",
+    name: "iPhone 15 Pro Max / 15 Plus",
+    brand: "Apple",
+    width: 1290,
+    height: 2796,
+    scale: 3,
+    dpi: 460,
+    screenRadius: 165,
+    bezel: { side: 52, top: 52, bottom: 52 },
+    cutout: { kind: "island", width: 378, height: 112, top: 33 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 59)
+  },
+  {
+    id: "iphone-16-pro",
+    name: "iPhone 16 Pro",
+    brand: "Apple",
+    width: 1206,
+    height: 2622,
+    scale: 3,
+    dpi: 460,
+    screenRadius: 171,
+    bezel: { side: 40, top: 40, bottom: 40 },
+    cutout: { kind: "island", width: 378, height: 112, top: 42 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 62)
+  },
+  {
+    id: "iphone-16-pro-max",
+    name: "iPhone 16 Pro Max",
+    brand: "Apple",
+    width: 1320,
+    height: 2868,
+    scale: 3,
+    dpi: 460,
+    screenRadius: 171,
+    bezel: { side: 42, top: 42, bottom: 42 },
+    cutout: { kind: "island", width: 378, height: 112, top: 42 },
+    homeIndicator: !0,
+    safe: NOTCH_IPHONE(3, 62)
+  },
+  {
+    id: "ipad-10",
+    name: "iPad (10th gen)",
+    brand: "Apple",
+    width: 1640,
+    height: 2360,
+    scale: 2,
+    dpi: 264,
+    screenRadius: 36,
+    bezel: { side: 113, top: 111, bottom: 111 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    homeIndicator: !0,
+    safe: { portrait: pt(2, 0, 20), landscape: pt(2, 0, 20) }
+  },
+  {
+    id: "ipad-pro-11",
+    name: 'iPad Pro 11"',
+    brand: "Apple",
+    width: 1668,
+    height: 2388,
+    scale: 2,
+    dpi: 264,
+    screenRadius: 36,
+    bezel: { side: 69, top: 69, bottom: 69 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    homeIndicator: !0,
+    safe: { portrait: pt(2, 0, 20), landscape: pt(2, 0, 20) }
+  },
+  {
+    id: "ipad-pro-12-9",
+    name: 'iPad Pro 12.9"',
+    brand: "Apple",
+    width: 2048,
+    height: 2732,
+    scale: 2,
+    dpi: 264,
+    screenRadius: 36,
+    bezel: { side: 69, top: 69, bottom: 69 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    homeIndicator: !0,
+    safe: { portrait: pt(2, 0, 20), landscape: pt(2, 0, 20) }
+  },
+  {
+    id: "pixel-7",
+    name: "Pixel 7",
+    brand: "Google",
+    width: 1080,
+    height: 2400,
+    scale: 2.625,
+    dpi: 416,
+    screenRadius: 110,
+    bezel: { side: 42, top: 42, bottom: 50 },
+    cutout: { kind: "punch", width: 60, height: 60, top: 36 },
+    safe: { portrait: ins(118, 0), landscape: ins(0, 0, 118, 0) }
+  },
+  {
+    id: "pixel-8",
+    name: "Pixel 8",
+    brand: "Google",
+    width: 1080,
+    height: 2400,
+    scale: 2.625,
+    dpi: 428,
+    screenRadius: 105,
+    bezel: { side: 40, top: 40, bottom: 46 },
+    cutout: { kind: "punch", width: 54, height: 54, top: 40 },
+    safe: { portrait: ins(128, 0), landscape: ins(0, 0, 128, 0) }
+  },
+  {
+    id: "galaxy-s23",
+    name: "Galaxy S23",
+    brand: "Samsung",
+    width: 1080,
+    height: 2340,
+    scale: 2.75,
+    dpi: 425,
+    screenRadius: 90,
+    bezel: { side: 38, top: 38, bottom: 40 },
+    cutout: { kind: "punch", width: 64, height: 64, top: 34 },
+    safe: { portrait: ins(105, 0), landscape: ins(0, 0, 105, 0) }
+  },
+  {
+    id: "galaxy-a14",
+    name: "Galaxy A14 (waterdrop)",
+    brand: "Samsung",
+    width: 1080,
+    height: 2408,
+    scale: 2.625,
+    dpi: 401,
+    screenRadius: 70,
+    bezel: { side: 35, top: 35, bottom: 90 },
+    cutout: { kind: "waterdrop", width: 150, height: 72, top: 0 },
+    safe: { portrait: ins(104, 0), landscape: ins(0, 0, 104, 0) }
+  },
+  {
+    id: "android-16x9",
+    name: "Generic Android 16:9",
+    brand: "Generic",
+    width: 1080,
+    height: 1920,
+    scale: 3,
+    dpi: 441,
+    screenRadius: 0,
+    bezel: { side: 40, top: 150, bottom: 150 },
+    cutout: { kind: "none", width: 0, height: 0, top: 0 },
+    safe: { portrait: ZERO, landscape: ZERO }
+  }
+], DEFAULT_DEVICE_ID = "iphone-14-pro";
+function findDevice(id) {
+  return DEVICES.find((d) => d.id === id) || DEVICES.find((d) => d.id === DEFAULT_DEVICE_ID);
+}
+function rotateRect(r, o, portraitW, portraitH) {
+  return o === "landscapeLeft" ? { x: r.y, y: portraitW - (r.x + r.w), w: r.h, h: r.w } : o === "landscapeRight" ? { x: portraitH - (r.y + r.h), y: r.x, w: r.h, h: r.w } : { x: r.x, y: r.y, w: r.w, h: r.h };
+}
+function rotateEdges(e, o) {
+  return o === "landscapeLeft" ? { left: e.top, right: e.bottom, top: e.right, bottom: e.left } : o === "landscapeRight" ? { right: e.top, left: e.bottom, top: e.left, bottom: e.right } : { ...e };
+}
+function safeInsets(d, o) {
+  if (o === "portrait") return { ...d.safe.portrait };
+  let l = d.safe.landscape;
+  return o === "landscapeLeft" ? { ...l } : d.safe.landscapeRight ? { ...d.safe.landscapeRight } : { top: l.top, bottom: l.bottom, left: l.right, right: l.left };
+}
+function deviceLayout(d, o) {
+  let portrait = o === "portrait", screenW = portrait ? d.width : d.height, screenH = portrait ? d.height : d.width, frame = rotateEdges({ top: d.bezel.top, bottom: d.bezel.bottom, left: d.bezel.side, right: d.bezel.side }, o), totalW = screenW + frame.left + frame.right, totalH = screenH + frame.top + frame.bottom, cutout = null;
+  d.cutout.kind !== "none" && d.cutout.width > 0 && d.cutout.height > 0 && (cutout = { ...rotateRect({ x: (d.width - d.cutout.width) / 2, y: d.cutout.top, w: d.cutout.width, h: d.cutout.height }, o, d.width, d.height), kind: d.cutout.kind });
+  let indicator = null;
+  if (d.homeIndicator) {
+    let w = Math.min(screenW * 0.4, 134 * d.scale), h = 5 * d.scale;
+    indicator = { x: (screenW - w) / 2, y: screenH - 8 * d.scale - h, w, h };
+  }
+  let homeButton = null;
+  if (d.homeButton) {
+    let r = Math.min(d.bezel.bottom * 0.32, d.width * 0.075), pcx = d.bezel.side + d.width / 2, pcy = d.bezel.top + d.height + d.bezel.bottom / 2, bodyW = d.width + 2 * d.bezel.side, bodyH = d.height + d.bezel.top + d.bezel.bottom, c = rotateRect({ x: pcx, y: pcy, w: 0, h: 0 }, o, bodyW, bodyH);
+    homeButton = { cx: c.x, cy: c.y, r };
+  }
+  let outerRadius = d.screenRadius > 0 ? d.screenRadius + Math.min(frame.left, frame.top, frame.right, frame.bottom) : Math.min(totalW, totalH) * 0.08;
+  return {
+    device: d,
+    orientation: o,
+    screenW,
+    screenH,
+    frame,
+    totalW,
+    totalH,
+    screenRadius: d.screenRadius,
+    outerRadius,
+    cutout,
+    indicator,
+    homeButton,
+    safe: safeInsets(d, o)
+  };
+}
+function safeFractions(l) {
+  return {
+    top: l.safe.top / l.screenH,
+    bottom: l.safe.bottom / l.screenH,
+    left: l.safe.left / l.screenW,
+    right: l.safe.right / l.screenW
+  };
+}
+function pointerOnScreen(clientX, clientY, screen) {
+  let u = (clientX - screen.left) / screen.width, v = (clientY - screen.top) / screen.height;
+  return { u, v, inside: u >= 0 && u <= 1 && v >= 0 && v <= 1 };
+}
+function cutoutPath(kind, w, h) {
+  let f = (n) => (Math.round(n * 100) / 100).toString();
+  switch (kind) {
+    case "notch": {
+      let r = Math.min(h * 0.6, w / 4);
+      return `M0,0 H${f(w)} V${f(h - r)} Q${f(w)},${f(h)} ${f(w - r)},${f(h)} H${f(r)} Q0,${f(h)} 0,${f(h - r)} Z`;
+    }
+    case "island": {
+      let r = Math.min(h, w) / 2;
+      return `M${f(r)},0 H${f(w - r)} A${f(r)},${f(r)} 0 0 1 ${f(w - r)},${f(h)} H${f(r)} A${f(r)},${f(r)} 0 0 1 ${f(r)},0 Z`;
+    }
+    case "punch": {
+      let r = Math.min(w, h) / 2;
+      return `M${f(w / 2 - r)},${f(h / 2)} A${f(r)},${f(r)} 0 1 0 ${f(w / 2 + r)},${f(h / 2)} A${f(r)},${f(r)} 0 1 0 ${f(w / 2 - r)},${f(h / 2)} Z`;
+    }
+    case "waterdrop":
+      return `M0,0 C${f(w * 0.3)},0 ${f(w * 0.22)},${f(h)} ${f(w / 2)},${f(h)} C${f(w * 0.78)},${f(h)} ${f(w * 0.7)},0 ${f(w)},0 Z`;
+    default:
+      return "";
+  }
+}
+function cutoutTransform(o, portraitW, portraitH) {
+  return o === "landscapeLeft" ? `translate(0 ${portraitW}) rotate(-90)` : o === "landscapeRight" ? `translate(${portraitH} 0) rotate(90)` : "";
+}
+
 // source/panels/default/app.ts
-var DISPLAY_COUNT = 8, SCALE_MAX = 5, BUILTIN_RESOLUTIONS = [
+var ORIENTATIONS = ["portrait", "landscapeLeft", "landscapeRight"], SIM_FIT_MARGIN = 0.94, DISPLAY_COUNT = 8, SCALE_MAX = 5, BUILTIN_RESOLUTIONS = [
   { id: "free", label: "Free Aspect", kind: "free", w: 0, h: 0 },
   { id: "design", label: "Design Resolution", kind: "design", w: 0, h: 0 },
   { id: "a5x4", label: "5:4", kind: "aspect", w: 5, h: 4 },
@@ -23363,7 +23737,12 @@ function defaultSettings() {
     quality: "high",
     previewWhenStopped: !0,
     showStats: !1,
-    custom: []
+    custom: [],
+    viewMode: "game",
+    deviceId: DEFAULT_DEVICE_ID,
+    orientation: "portrait",
+    showSafeArea: !0,
+    resizeSceneView: !1
   };
 }
 function createState() {
@@ -23404,6 +23783,10 @@ function createGamePanel(el, bridge, template) {
   function fail(msg, e) {
     state.error = e ? `${msg}: ${errorText(e)}` : msg;
   }
+  let simulator = () => state.settings.viewMode === "simulator";
+  function currentLayout() {
+    return deviceLayout(findDevice(state.settings.deviceId), state.settings.orientation);
+  }
   function resolutions() {
     return [...BUILTIN_RESOLUTIONS, ...state.settings.custom];
   }
@@ -23422,6 +23805,10 @@ function createGamePanel(el, bridge, template) {
     return actualMismatch() || chosenSize();
   }
   function chosenSize() {
+    if (simulator()) {
+      let l = currentLayout();
+      return { w: l.screenW, h: l.screenH };
+    }
     let r = currentResolution(), vw = Math.max(1, Math.floor(state.viewW * state.dpr)), vh = Math.max(1, Math.floor(state.viewH * state.dpr));
     if (r.kind === "fixed") return { w: r.w, h: r.h };
     if (r.kind === "design") {
@@ -23436,7 +23823,15 @@ function createGamePanel(el, bridge, template) {
   }
   function fitScale() {
     let g = gameSize();
+    if (simulator()) {
+      let t = deviceBox(g);
+      return Math.min(state.viewW * state.dpr / t.w, state.viewH * state.dpr / t.h) * SIM_FIT_MARGIN || 1;
+    }
     return Math.min(state.viewW * state.dpr / g.w, state.viewH * state.dpr / g.h) || 1;
+  }
+  function deviceBox(g) {
+    let l = currentLayout(), kx = g.w / l.screenW, ky = g.h / l.screenH;
+    return { w: g.w + (l.frame.left + l.frame.right) * kx, h: g.h + (l.frame.top + l.frame.bottom) * ky };
   }
   function scaleRange() {
     let fit = fitScale();
@@ -23506,23 +23901,44 @@ function createGamePanel(el, bridge, template) {
     }
   }
   function chosenAspect() {
+    if (simulator()) {
+      let l = currentLayout();
+      return l.screenW / l.screenH;
+    }
     let r = currentResolution();
     if ((r.kind === "aspect" || r.kind === "fixed") && r.w > 0 && r.h > 0) return r.w / r.h;
     let g = chosenSize();
     return g.w / g.h;
   }
+  function resizesSceneView() {
+    return simulator() || !!state.settings.resizeSceneView;
+  }
   function pushGameAspect() {
-    active() && bridge.setGameAspect(chosenAspect());
+    active() && bridge.setGameAspect(resizesSceneView() ? chosenAspect() : null);
   }
   let aspectTimer = 0;
-  (0, vue_exports.watch)(() => active() ? chosenAspect().toFixed(4) : "", (key) => {
+  (0, vue_exports.watch)(() => active() ? resizesSceneView() ? chosenAspect().toFixed(4) : "scene" : "", (key) => {
     key && (clearTimeout(aspectTimer), aspectTimer = window.setTimeout(pushGameAspect, 120));
+  });
+  function simulatedSafeArea() {
+    return simulator() ? safeFractions(currentLayout()) : null;
+  }
+  let safeTimer = 0, safeSent = !1;
+  (0, vue_exports.watch)(() => active() ? JSON.stringify(simulatedSafeArea()) : "", (key) => {
+    if (clearTimeout(safeTimer), !key) {
+      safeSent = !1;
+      return;
+    }
+    safeTimer = window.setTimeout(() => {
+      let insets = simulatedSafeArea();
+      !insets && !safeSent || (safeSent = !!insets, bridge.setSafeArea(insets).catch((e) => fail("Could not set the simulated safe area", e)));
+    }, 120);
   });
   async function start() {
     state.phase = "starting", state.error = "";
     try {
       if (!await bridge.setPreviewPlay(!0)) throw new Error("Cocos refused to start Play-in-Editor, check the Console");
-      await bridge.previewCall("pause", !0), await bridge.connectPie(), lastId = -1, await bridge.play(), state.phase = "playing", pushGameAspect();
+      await bridge.previewCall("pause", !0), await bridge.connectPie(), lastId = -1, await bridge.play(), state.phase = "playing", pushGameAspect(), !resizesSceneView() && currentResolution().kind !== "free" && notify(`Playing at the Scene view's size. \u22EE \u2192 "Resize Scene view to game aspect" plays at ${currentResolution().label}.`);
     } catch (e) {
       fail("Could not start play mode", e), await bridge.diagnose(diagnosticsExtra()).catch(() => {
       }), state.phase = "stopped";
@@ -23580,10 +23996,10 @@ function createGamePanel(el, bridge, template) {
     }
   }
   function pointer(e) {
-    let r = canvasEl.getBoundingClientRect();
+    let p = pointerOnScreen(e.clientX, e.clientY, canvasEl.getBoundingClientRect());
     return {
-      u: (e.clientX - r.left) / r.width,
-      v: (e.clientY - r.top) / r.height,
+      u: p.u,
+      v: p.v,
       button: e.button,
       buttons: e.buttons,
       dx: e.movementX,
@@ -23614,7 +24030,7 @@ function createGamePanel(el, bridge, template) {
       });
     }, 400));
   }), bridge.loadSettings().then((saved) => {
-    saved && Object.assign(state.settings, defaultSettings(), saved), resolutions().some((r) => r.id === state.settings.resolutionId) || (state.settings.resolutionId = "free");
+    saved && Object.assign(state.settings, defaultSettings(), saved), resolutions().some((r) => r.id === state.settings.resolutionId) || (state.settings.resolutionId = "free"), state.settings.viewMode !== "simulator" && (state.settings.viewMode = "game"), DEVICES.some((d) => d.id === state.settings.deviceId) || (state.settings.deviceId = DEFAULT_DEVICE_ID), ORIENTATIONS.indexOf(state.settings.orientation) < 0 && (state.settings.orientation = "portrait"), state.settings.resizeSceneView = state.settings.resizeSceneView === !0;
   }).catch(() => {
   }).finally(() => {
     settingsLoaded = !0;
@@ -23631,7 +24047,9 @@ function createGamePanel(el, bridge, template) {
       view: [state.viewW, state.viewH],
       devicePixelRatio: state.dpr,
       display: state.settings.display,
-      error: state.error
+      error: state.error,
+      viewMode: state.settings.viewMode,
+      simulator: simulator() ? { device: state.settings.deviceId, orientation: state.settings.orientation, safeArea: simulatedSafeArea() } : null
     };
   }
   let Root = (0, vue_exports.defineComponent)({
@@ -23650,7 +24068,58 @@ function createGamePanel(el, bridge, template) {
       let game = (0, vue_exports.computed)(() => gameSize()), currentScale = (0, vue_exports.computed)(() => scale()), range = (0, vue_exports.computed)(() => scaleRange()), display = (0, vue_exports.computed)(() => {
         let g = game.value, s = currentScale.value / state.dpr;
         return { width: `${Math.max(1, g.w * s)}px`, height: `${Math.max(1, g.h * s)}px` };
-      }), resolution = (0, vue_exports.computed)(() => currentResolution()), resolutionList = (0, vue_exports.computed)(() => ({
+      }), sim = (0, vue_exports.computed)(() => simulator()), device = (0, vue_exports.computed)(() => findDevice(state.settings.deviceId)), layout = (0, vue_exports.computed)(() => currentLayout()), simScale = (0, vue_exports.computed)(() => {
+        let g = game.value, l = layout.value, s = currentScale.value / state.dpr;
+        return { x: g.w * s / l.screenW, y: g.h * s / l.screenH };
+      }), px = (n) => `${Math.max(0, n)}px`, stageStyle = (0, vue_exports.computed)(() => {
+        if (!sim.value) return {};
+        let l = layout.value, k = simScale.value;
+        return {
+          padding: `${px(l.frame.top * k.y)} ${px(l.frame.right * k.x)} ${px(l.frame.bottom * k.y)} ${px(l.frame.left * k.x)}`,
+          borderRadius: px(l.outerRadius * Math.min(k.x, k.y))
+        };
+      }), canvasStyle = (0, vue_exports.computed)(() => {
+        if (!sim.value) return display.value;
+        let k = simScale.value;
+        return { ...display.value, borderRadius: px(layout.value.screenRadius * Math.min(k.x, k.y)) };
+      }), onScreen = (x, y, w, h) => {
+        let l = layout.value, k = simScale.value;
+        return { left: px((l.frame.left + x) * k.x), top: px((l.frame.top + y) * k.y), width: px(w * k.x), height: px(h * k.y) };
+      }, cutout = (0, vue_exports.computed)(() => {
+        let l = layout.value, c = l.cutout;
+        if (!sim.value || !c) return null;
+        let d = device.value.cutout;
+        return {
+          style: onScreen(c.x, c.y, c.w, c.h),
+          viewBox: `0 0 ${c.w} ${c.h}`,
+          path: cutoutPath(c.kind, d.width, d.height),
+          transform: cutoutTransform(l.orientation, d.width, d.height)
+        };
+      }), indicator = (0, vue_exports.computed)(() => {
+        let i = layout.value.indicator;
+        return !sim.value || !i ? null : { ...onScreen(i.x, i.y, i.w, i.h), borderRadius: px(i.h * simScale.value.y / 2) };
+      }), homeButton = (0, vue_exports.computed)(() => {
+        let b = layout.value.homeButton;
+        if (!sim.value || !b) return null;
+        let k = simScale.value;
+        return { left: px((b.cx - b.r) * k.x), top: px((b.cy - b.r) * k.y), width: px(2 * b.r * k.x), height: px(2 * b.r * k.y) };
+      }), safeArea = (0, vue_exports.computed)(() => {
+        let l = layout.value;
+        return !sim.value || !state.settings.showSafeArea ? null : onScreen(l.safe.left, l.safe.top, l.screenW - l.safe.left - l.safe.right, l.screenH - l.safe.top - l.safe.bottom);
+      }), deviceGroups = (0, vue_exports.computed)(() => {
+        let groups = [];
+        for (let d of DEVICES) {
+          let g = groups.find((x) => x.brand === d.brand);
+          g || groups.push(g = { brand: d.brand, devices: [] }), g.devices.push(d);
+        }
+        return groups;
+      }), chooseMode = (mode) => {
+        state.settings.viewMode = mode, state.zoom = null, state.menu = "", lastId = -1, pushGameAspect();
+      }, chooseDevice = (d) => {
+        state.settings.deviceId = d.id, state.zoom = null, state.menu = "", pushGameAspect();
+      }, setOrientation = (o) => {
+        state.settings.orientation !== o && (state.settings.orientation = o, state.zoom = null, pushGameAspect());
+      }, resolution = (0, vue_exports.computed)(() => currentResolution()), resolutionList = (0, vue_exports.computed)(() => ({
         special: BUILTIN_RESOLUTIONS.filter((r) => r.kind === "free" || r.kind === "design"),
         aspects: BUILTIN_RESOLUTIONS.filter((r) => r.kind === "aspect"),
         fixed: BUILTIN_RESOLUTIONS.filter((r) => r.kind === "fixed"),
@@ -23673,7 +24142,7 @@ function createGamePanel(el, bridge, template) {
       }, chooseResolution = (r) => {
         let changed = state.settings.resolutionId !== r.id;
         state.settings.resolutionId = r.id, state.zoom = null, state.menu = "", changed && pushGameAspect();
-      }, mismatch = (0, vue_exports.computed)(() => actualMismatch());
+      }, mismatch = (0, vue_exports.computed)(() => resizesSceneView() ? actualMismatch() : null), sceneSized = (0, vue_exports.computed)(() => resizesSceneView() ? null : actualMismatch());
       return {
         s: state,
         root,
@@ -23688,6 +24157,7 @@ function createGamePanel(el, bridge, template) {
         resolutionList,
         sizeLabel,
         mismatch,
+        sceneSized,
         playing,
         noticeVisible,
         displayCount: DISPLAY_COUNT,
@@ -23758,7 +24228,20 @@ function createGamePanel(el, bridge, template) {
         cycleFlip: () => {
           state.flip = state.flip === null ? !0 : state.flip ? !1 : null, lastId = -1;
         },
-        flipLabel: (0, vue_exports.computed)(() => state.flip === null ? "Auto" : state.flip ? "On" : "Off")
+        flipLabel: (0, vue_exports.computed)(() => state.flip === null ? "Auto" : state.flip ? "On" : "Off"),
+        sim,
+        device,
+        layout,
+        stageStyle,
+        canvasStyle,
+        cutout,
+        indicator,
+        homeButton,
+        safeArea,
+        deviceGroups,
+        chooseMode,
+        chooseDevice,
+        setOrientation
       };
     },
     template

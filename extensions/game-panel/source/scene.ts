@@ -24,7 +24,7 @@
  */
 import { join } from 'path';
 import type { Camera, RenderTexture, Scene, renderer } from 'cc';
-import type { CaptureStats, FrameRequest, InputMessage } from './bridge';
+import type { CaptureStats, FrameRequest, InputMessage, SafeInsets } from './bridge';
 import { fitToWindow } from './camera-fit';
 import { AsyncReadback, JpegEncoder, Readback, toBase64, toOpaqueImage } from './capture';
 import { FramePacer, frameInterval } from './pacing';
@@ -85,6 +85,8 @@ const S = {
     reattached: 0,
     inputs: 0,
     inputSwaps: 0,
+    /** Frames after which the director was paused again (diagnostics). */
+    repauses: 0,
     /** Change tracking of the captured image (diagnostics). */
     pixelHash: 0,
     pixelChanges: 0,
@@ -143,6 +145,21 @@ function renderSeq(): number {
 
 // ------------------------------------------------------------------ hooks
 
+/**
+ * The director runs the game only inside a frame: it is resumed when a frame
+ * begins and paused again when it ends. Between frames Play-in-Editor is then
+ * in exactly the state Cocos' own Pause leaves it in (director, game and
+ * PreviewPlay paused). That matters for the Scene panel: in PIE the engine has
+ * no mouse listeners of its own; the preview scene facade's Operation listener
+ * (priority 999, above the gizmos' 99 and the camera's 98) forwards the Scene
+ * view's mouse events to the game while the director runs. A director left
+ * running between frames made it swallow every click and drag, so nodes could
+ * not be picked and gizmos not dragged in the Scene panel while playing.
+ */
+function playing(): boolean {
+    return S.mode === 'run' || S.mode === 'pause';
+}
+
 function onBeginFrame() {
     const { director } = cc();
     if (!S.selfTicking) S.editorTicks++;
@@ -151,6 +168,31 @@ function onBeginFrame() {
         S.stepOnce = false;
     } else if (S.mode === 'pause' && !director.isPaused()) {
         director.pause();
+    }
+}
+
+/** End of a frame: back to PIE's paused state, so the Scene view's tools get the mouse. */
+function onEndFrame() {
+    if (!playing()) return;
+    const { director } = cc();
+    if (!director.isPaused()) {
+        director.pause();
+        S.repauses++;
+    }
+}
+
+/**
+ * Run game code that is not part of a frame (input from the Game panel) with
+ * the director running, as the game would see it on a device.
+ */
+function withDirectorRunning(fn: () => void) {
+    const { director } = cc();
+    const resume = S.mode === 'run' && director.isPaused();
+    if (resume) director.resume();
+    try {
+        fn();
+    } finally {
+        if (resume && playing()) director.pause();
     }
 }
 
@@ -187,6 +229,7 @@ function hook() {
     director.on(Director.EVENT_AFTER_UPDATE, onAfterUpdate);
     director.on(Director.EVENT_BEFORE_DRAW, onBeforeDraw);
     director.on(Director.EVENT_AFTER_DRAW, onAfterDraw);
+    director.on(Director.EVENT_END_FRAME, onEndFrame);
     director.on(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch);
     S.hooked = true;
 }
@@ -198,6 +241,7 @@ function unhook() {
     director.off(Director.EVENT_AFTER_UPDATE, onAfterUpdate);
     director.off(Director.EVENT_BEFORE_DRAW, onBeforeDraw);
     director.off(Director.EVENT_AFTER_DRAW, onAfterDraw);
+    director.off(Director.EVENT_END_FRAME, onEndFrame);
     director.off(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch);
     S.hooked = false;
 }
@@ -215,6 +259,8 @@ function selfTick(dt: number) {
         note(`tick: ${(e as Error).message}`);
     } finally {
         S.selfTicking = false;
+        // END_FRAME pauses it again; also when the frame threw before reaching it.
+        if (playing() && !director.isPaused()) director.pause();
     }
 }
 
@@ -793,7 +839,8 @@ function stats() {
         screenWidth: Math.round(director.root?.mainWindow?.width ?? 0),
         screenHeight: Math.round(director.root?.mainWindow?.height ?? 0),
         cameras: S.mirrors.size,
-        paused: director.isPaused(),
+        // The play mode: between frames the director is paused even while running.
+        paused: S.mode !== 'run',
         capture: { ...S.capture, mode: S.asyncState === 'off' ? 'sync' : S.capture.mode },
         mutedCameras: S.muted.size,
     };
@@ -869,8 +916,10 @@ function injectInput(m: InputMessage) {
             altKey: !!m.altKey, ctrlKey: !!m.ctrlKey, shiftKey: !!m.shiftKey, metaKey: !!m.metaKey,
             target: null, stopPropagation: noop, preventDefault: noop,
         };
-        if (m.type === 'keydown') target._dispatchKeyboardDownEvent(ev);
-        else target._dispatchKeyboardUpEvent(ev);
+        withDirectorRunning(() => {
+            if (m.type === 'keydown') target._dispatchKeyboardDownEvent(ev);
+            else target._dispatchKeyboardUpEvent(ev);
+        });
         return;
     }
     // The engine turns clientX/Y into a location relative to #GameCanvas (CSS px
@@ -901,12 +950,158 @@ function injectInput(m: InputMessage) {
         stopPropagation: noop,
         preventDefault: noop,
     };
-    withGameCamerasOnScreen(() => {
+    withGameCamerasOnScreen(() => withDirectorRunning(() => {
         if (m.type === 'down') target._dispatchMouseDownEvent(ev);
         else if (m.type === 'move') target._dispatchMouseMoveEvent(ev);
         else if (m.type === 'up') target._dispatchMouseUpEvent(ev);
         else if (m.type === 'wheel') target._dispatchMouseScrollEvent(ev);
-    });
+    }));
+}
+
+// ------------------------------------------------- simulated safe area
+
+/**
+ * Device Simulator safe area. On the web the engine reads the safe area from
+ * the page's CSS variables --safe-top/-bottom/-left/-right
+ * (pal/screen-adapter/web: screenAdapter.safeAreaEdge, used by
+ * sys.getSafeAreaRect), so they are set on the PIE page while simulating.
+ * cc.SafeArea.updateArea has an editor-build branch (EDITOR is true in PIE)
+ * that only stretches the node, so its runtime adaptation is applied here, and
+ * again after resizes, scene changes and for SafeAreas enabled later.
+ */
+const SAFE_VARS: [keyof SafeInsets, string][] = [['top', '--safe-top'], ['bottom', '--safe-bottom'], ['left', '--safe-left'], ['right', '--safe-right']];
+const SAFE = {
+    insets: null as SafeInsets | null,
+    /** The page's own inline values of the variables, restored afterwards. */
+    saved: null as Record<string, string> | null,
+    timer: 0 as any,
+    hooked: false,
+};
+
+function applySafeVars() {
+    const ins = SAFE.insets;
+    if (!ins) return;
+    const { screen } = cc();
+    const dpr = screen.devicePixelRatio || 1;
+    const w = screen.windowSize.width / dpr;
+    const h = screen.windowSize.height / dpr;
+    const style = document.documentElement.style;
+    for (const [k, name] of SAFE_VARS) {
+        const size = k === 'top' || k === 'bottom' ? h : w;
+        style.setProperty(name, `${Math.round(Math.max(0, Math.min(0.5, ins[k])) * size)}px`);
+    }
+}
+
+function safeAreaComponents(): any[] {
+    const SafeArea = (cc() as any).SafeArea;
+    const scene = cc().director.getScene();
+    const out: any[] = [];
+    if (!SafeArea || !scene) return out;
+    const walk = (n: any) => {
+        const c = n.getComponent(SafeArea);
+        if (c && c.enabledInHierarchy) out.push(c);
+        for (const ch of n.children) walk(ch);
+    };
+    walk(scene);
+    return out;
+}
+
+/** Widget margins cc.SafeArea gives at runtime (top, bottom, left, right). */
+function safeMargins(comp: any): [number, number, number, number] {
+    const { view, sys } = cc();
+    const vs = view.getVisibleSize();
+    const r = sys.getSafeAreaRect(comp.symmetric !== false);
+    return [vs.height - r.y - r.height, r.y, r.x, vs.width - r.x - r.width];
+}
+
+/** cc.SafeArea.updateArea's runtime branch: Widget margins from the safe area, position kept through the anchor. */
+function adaptSafeArea(comp: any) {
+    const { Widget, UITransform, widgetManager } = cc() as any;
+    const widget = comp.node.getComponent(Widget);
+    const ui = comp.node.getComponent(UITransform);
+    if (!widget || !ui) return;
+    widget.updateAlignment();
+    const lastPos = comp.node.position.clone();
+    const lastAnchor = ui.anchorPoint.clone();
+    widget.isAlignTop = widget.isAlignBottom = widget.isAlignLeft = widget.isAlignRight = true;
+    const [top, bottom, left, right] = safeMargins(comp);
+    widget.top = top;
+    widget.bottom = bottom;
+    widget.left = left;
+    widget.right = right;
+    widget.updateAlignment();
+    const cur = comp.node.position;
+    if (ui.width && ui.height) ui.setAnchorPoint(lastAnchor.x - (cur.x - lastPos.x) / ui.width, lastAnchor.y - (cur.y - lastPos.y) / ui.height);
+    widgetManager?.add?.(widget);
+}
+
+/** Adapts every SafeArea (all, or only those whose margins are not the simulated ones). */
+function adaptSafeAreas(onlyStale: boolean): number {
+    let n = 0;
+    for (const comp of safeAreaComponents()) {
+        try {
+            if (onlyStale) {
+                const w = comp.node.getComponent((cc() as any).Widget);
+                const m = safeMargins(comp);
+                if (w && w.isAlignTop && w.isAlignBottom && w.isAlignLeft && w.isAlignRight
+                    && Math.abs(w.top - m[0]) < 0.5 && Math.abs(w.bottom - m[1]) < 0.5 && Math.abs(w.left - m[2]) < 0.5 && Math.abs(w.right - m[3]) < 0.5) continue;
+            }
+            adaptSafeArea(comp);
+            n++;
+        } catch (e) {
+            note(`safe area: ${(e as Error).message}`);
+        }
+    }
+    return n;
+}
+
+function onSafeResize() {
+    if (!SAFE.insets) return;
+    // runs after cc.SafeArea's own resize handler (editor build: stretch)
+    applySafeVars();
+    adaptSafeAreas(false);
+}
+
+function hookSafeArea() {
+    if (SAFE.hooked) return;
+    const { screen, director, Director } = cc();
+    screen.on('window-resize', onSafeResize);
+    director.on(Director.EVENT_AFTER_SCENE_LAUNCH, onSafeResize);
+    // SafeAreas enabled later (popups) run the editor branch: adapt them too
+    SAFE.timer = setInterval(() => {
+        if (SAFE.insets) adaptSafeAreas(true);
+    }, 500);
+    SAFE.hooked = true;
+}
+
+function unhookSafeArea() {
+    if (!SAFE.hooked) return;
+    const { screen, director, Director } = cc();
+    screen.off('window-resize', onSafeResize);
+    director.off(Director.EVENT_AFTER_SCENE_LAUNCH, onSafeResize);
+    clearInterval(SAFE.timer);
+    SAFE.timer = 0;
+    SAFE.hooked = false;
+}
+
+/** Back to the page's own safe area. */
+function restoreSafeArea() {
+    if (!SAFE.insets && !SAFE.saved) return;
+    SAFE.insets = null;
+    unhookSafeArea();
+    const style = document.documentElement.style;
+    for (const [, name] of SAFE_VARS) {
+        const prev = SAFE.saved ? SAFE.saved[name] : '';
+        if (prev) style.setProperty(name, prev);
+        else style.removeProperty(name);
+    }
+    SAFE.saved = null;
+    try {
+        adaptSafeAreas(false);
+    } catch {
+        // scene gone
+    }
+    note('safe area restored');
 }
 
 // ---------------------------------------------------------------- methods
@@ -921,6 +1116,142 @@ function src(fn: unknown, max = 2500): string {
 
 function size(s: { width: number; height: number } | null | undefined) {
     return s ? [s.width, s.height] : null;
+}
+
+/**
+ * Records (read-only) the last Scene view mousedown as the editor receives it.
+ * The Scene panel catches the mouse on its own element (its webview has
+ * pointer-events: none) and sends the coordinates here; comparing them with
+ * the canvas shows how the panel maps them. The listener returns nothing, so
+ * the event goes on to the editor's tools unchanged.
+ */
+const PROBE = {
+    listener: null as null | ((e: any) => void),
+    last: null as null | Record<string, unknown>,
+};
+
+function probeSceneMouse(on: boolean) {
+    const op = cce().Operation;
+    if (!op) return;
+    try {
+        if (on && !PROBE.listener) {
+            PROBE.listener = (e: any) => {
+                const fields: Record<string, unknown> = {};
+                if (e && typeof e === 'object') {
+                    for (const k of Object.keys(e)) {
+                        const v = e[k];
+                        if (v === null || ['number', 'string', 'boolean'].includes(typeof v)) fields[k] = v;
+                    }
+                }
+                const canvas = document.getElementById('GameCanvas') as HTMLCanvasElement | null;
+                const r = canvas?.getBoundingClientRect();
+                PROBE.last = {
+                    at: new Date().toISOString().slice(11, 23),
+                    event: fields,
+                    canvasCss: r ? [r.width, r.height] : null,
+                    canvasBacking: canvas ? [canvas.width, canvas.height] : null,
+                    windowInner: [window.innerWidth, window.innerHeight],
+                };
+            };
+            op.on('mousedown', PROBE.listener, 100000);
+        } else if (!on && PROBE.listener) {
+            op.removeListener('mousedown', PROBE.listener);
+            PROBE.listener = null;
+        }
+    } catch (e) {
+        note(`mouse probe: ${(e as Error).message}`);
+        PROBE.listener = null;
+    }
+}
+
+/** Sizes the editor's picking depends on (read-only). */
+function describeSizes() {
+    const { director, screen, renderer } = cc();
+    const root: any = director.root;
+    const canvas = document.getElementById('GameCanvas') as HTMLCanvasElement | null;
+    const r = canvas?.getBoundingClientRect();
+    const dpr = screen.devicePixelRatio || 1;
+    const editorCameras = (root?.cameraList || [])
+        .filter((c: any) => c.window === root?.mainWindow && (c.cameraUsage === renderer.scene.CameraUsage.EDITOR || /editor/i.test(c.name || '')))
+        .map((c: any) => ({ name: c.name, usage: c.cameraUsage, size: [c.width, c.height], viewport: c.viewport && [c.viewport.x, c.viewport.y, c.viewport.width, c.viewport.height], enabled: c.enabled }));
+    return {
+        devicePixelRatio: dpr,
+        windowInner: [window.innerWidth, window.innerHeight],
+        canvasCss: r ? [r.x, r.y, r.width, r.height] : null,
+        canvasBacking: canvas ? [canvas.width, canvas.height] : null,
+        canvasCssTimesDpr: r ? [Math.round(r.width * dpr), Math.round(r.height * dpr)] : null,
+        screenWindowSize: size(screen.windowSize),
+        mainWindow: root?.mainWindow ? [root.mainWindow.width, root.mainWindow.height] : null,
+        editorCameras,
+        lastSceneMouseDown: PROBE.last,
+    };
+}
+
+/**
+ * Who gets the Scene view's mouse while playing (read-only). The preview scene
+ * facade forwards Scene view input to the game while isInputRedirected() says
+ * so; it is read with the director paused and running to show what it depends on.
+ */
+function describeEditorInput() {
+    const { director } = cc();
+    let facade: any = null;
+    try {
+        facade = cce().SceneFacadeManager?.getCurrentFacade?.() ?? null;
+    } catch {
+        facade = null;
+    }
+    const redirected = () => {
+        try {
+            return typeof facade?.isInputRedirected === 'function' ? !!facade.isInputRedirected() : null;
+        } catch (e) {
+            return `[${(e as Error).message}]`;
+        }
+    };
+    const wasPaused = director.isPaused();
+    let probe: Record<string, unknown> | null = null;
+    try {
+        // Synchronous, between two frames: nothing renders or updates meanwhile.
+        director.pause();
+        const whenPaused = redirected();
+        director.resume();
+        const whenRunning = redirected();
+        probe = { whenDirectorPaused: whenPaused, whenDirectorRunning: whenRunning };
+    } finally {
+        if (wasPaused) director.pause();
+        else director.resume();
+    }
+    const op = cce().Operation;
+    const events = op?._events;
+    const listeners: Record<string, unknown> = {};
+    const entries: [string, unknown][] = events instanceof Map ? [...events.entries()] : events && typeof events === 'object' ? Object.entries(events) : [];
+    for (const [type, value] of entries) {
+        if (!/^mouse(down|move|up)$/.test(type)) continue;
+        const list = Array.isArray(value) ? value : value ? [value] : [];
+        listeners[type] = list.slice(0, 10).map((l: any) => (typeof l === 'function'
+            ? { fn: src(l, 500) }
+            : { keys: l && typeof l === 'object' ? Object.keys(l) : typeof l, priority: l?.priority, fn: src(l?.listener ?? l?.callback ?? l?.fn ?? l?.func, 500) }));
+    }
+    return {
+        directorPausedNow: wasPaused,
+        repausedFrames: S.repauses,
+        facade: facade ? {
+            type: facade.constructor?.name ?? null,
+            isEnter: facade._isEnter ?? null,
+            inputRedirected: redirected(),
+            probe,
+            sources: {
+                isInputRedirected: src(facade.isInputRedirected, 1500),
+                redirectInput: src(facade.redirectInput, 1500),
+                registerOperation: src(facade.registerOperation, 3000),
+            },
+        } : null,
+        operation: op ? {
+            eventsType: Object.prototype.toString.call(events),
+            listeners,
+            emitMouseEvent: src(op._emitMouseEvent, 2000),
+            emit: src(op._emit, 1500),
+        } : null,
+    };
 }
 
 export const methods: Record<string, (...args: any[]) => any> = {
@@ -1034,6 +1365,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
         S.driver = 'self';
         hook();
         startDriver();
+        probeSceneMouse(true);
         note('play');
         return stats();
     },
@@ -1057,7 +1389,33 @@ export const methods: Record<string, (...args: any[]) => any> = {
         return stats();
     },
 
+    /**
+     * Device Simulator: the running game sees this safe area (fractions of the
+     * screen) in sys.getSafeAreaRect and cc.SafeArea; null restores the real one.
+     */
+    gpSafeArea(insets: SafeInsets | null) {
+        if (!insets) {
+            restoreSafeArea();
+            return { simulated: false };
+        }
+        const style = document.documentElement.style;
+        if (!SAFE.saved) {
+            SAFE.saved = {};
+            for (const [, name] of SAFE_VARS) SAFE.saved[name] = style.getPropertyValue(name);
+        }
+        const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+        SAFE.insets = { top: num(insets.top), bottom: num(insets.bottom), left: num(insets.left), right: num(insets.right) };
+        hookSafeArea();
+        applySafeVars();
+        const n = adaptSafeAreas(false);
+        const r = cc().sys.getSafeAreaRect(false);
+        note(`safe area ${JSON.stringify(SAFE.insets)}`);
+        return { simulated: true, rect: [r.x, r.y, r.width, r.height], safeAreas: n };
+    },
+
     gpStop() {
+        restoreSafeArea();
+        probeSceneMouse(false);
         S.mode = 'off';
         S.stepOnce = false;
         stopDriver();
@@ -1158,6 +1516,7 @@ export const methods: Record<string, (...args: any[]) => any> = {
                 reattached: S.reattached,
                 inputs: S.inputs,
                 inputCameraSwaps: S.inputSwaps,
+                directorRepauses: S.repauses,
             },
             meshRenderers: meshes.slice(0, 30).map((m: any) => ({
                 node: m.node?.name, active: m.node?.activeInHierarchy, enabled: m.enabledInHierarchy,
@@ -1182,6 +1541,21 @@ export const methods: Record<string, (...args: any[]) => any> = {
                 sample: (rs.models || []).slice(0, 25).map((m: any) => `${m.node?.name}${m.enabled ? '' : '(off)'}`),
             })),
             log: S.log.slice(),
+            editorInput: (() => {
+                try {
+                    return describeEditorInput();
+                } catch (e) {
+                    return { error: (e as Error).message };
+                }
+            })(),
+            sizes: (() => {
+                try {
+                    return describeSizes();
+                } catch (e) {
+                    return { error: (e as Error).message };
+                }
+            })(),
+            simulatedSafeArea: SAFE.insets,
             sceneFacadeManagerMethods: sfm ? proto(sfm) : null,
             previewPlayMethods: pp ? proto(pp) : null,
             sources: {

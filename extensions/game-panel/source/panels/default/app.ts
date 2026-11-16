@@ -3,12 +3,17 @@
  * everything goes through the GameBridge, so it also runs in a browser preview.
  */
 import { computed, createApp, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { FrameRequest, FrameResult, FrameStats, GameBridge, InputMessage, PanelSettings, Resolution } from '../../bridge';
+import { FrameRequest, FrameResult, FrameStats, GameBridge, InputMessage, PanelSettings, Resolution, SafeInsets } from '../../bridge';
 import { fromBase64 } from '../../capture';
+import { cutoutPath, cutoutTransform, DEFAULT_DEVICE_ID, deviceLayout, DeviceLayout, DEVICES, DeviceSpec, findDevice, Orientation, pointerOnScreen, safeFractions } from '../../devices';
 
 export type Phase = 'stopped' | 'starting' | 'playing' | 'paused' | 'stopping';
 export type ShortcutAction = 'play' | 'pause' | 'step';
-type MenuName = '' | 'display' | 'aspect' | 'more';
+type MenuName = '' | 'display' | 'aspect' | 'more' | 'mode' | 'device';
+
+const ORIENTATIONS: Orientation[] = ['portrait', 'landscapeLeft', 'landscapeRight'];
+/** Room left around the device when it is fitted to the view. */
+const SIM_FIT_MARGIN = 0.94;
 
 export const DISPLAY_COUNT = 8;
 const SCALE_MAX = 5;
@@ -59,6 +64,11 @@ function defaultSettings(): PanelSettings {
         previewWhenStopped: true,
         showStats: false,
         custom: [],
+        viewMode: 'game',
+        deviceId: DEFAULT_DEVICE_ID,
+        orientation: 'portrait',
+        showSafeArea: true,
+        resizeSceneView: false,
     };
 }
 
@@ -127,6 +137,14 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
         state.error = e ? `${msg}: ${errorText(e)}` : msg;
     }
 
+    // --------------------------------------------------------- simulator
+
+    const simulator = () => state.settings.viewMode === 'simulator';
+
+    function currentLayout(): DeviceLayout {
+        return deviceLayout(findDevice(state.settings.deviceId), state.settings.orientation);
+    }
+
     // -------------------------------------------------------- resolution
 
     function resolutions(): Resolution[] {
@@ -158,6 +176,10 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
 
     /** Game resolution in device pixels for the current choice and view size. */
     function chosenSize(): { w: number; h: number } {
+        if (simulator()) {
+            const l = currentLayout();
+            return { w: l.screenW, h: l.screenH };
+        }
         const r = currentResolution();
         const vw = Math.max(1, Math.floor(state.viewW * state.dpr));
         const vh = Math.max(1, Math.floor(state.viewH * state.dpr));
@@ -176,7 +198,20 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
     /** Device pixels per game pixel that makes the game fit the view. */
     function fitScale(): number {
         const g = gameSize();
+        if (simulator()) {
+            // the whole device (screen and body) fits, with a margin
+            const t = deviceBox(g);
+            return Math.min((state.viewW * state.dpr) / t.w, (state.viewH * state.dpr) / t.h) * SIM_FIT_MARGIN || 1;
+        }
         return Math.min((state.viewW * state.dpr) / g.w, (state.viewH * state.dpr) / g.h) || 1;
+    }
+
+    /** Simulator: the device's size in game pixels around a shown game of size `g`. */
+    function deviceBox(g: { w: number; h: number }): { w: number; h: number } {
+        const l = currentLayout();
+        const kx = g.w / l.screenW;
+        const ky = g.h / l.screenH;
+        return { w: g.w + (l.frame.left + l.frame.right) * kx, h: g.h + (l.frame.top + l.frame.bottom) * ky };
     }
 
     function scaleRange() {
@@ -300,22 +335,59 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
 
     /** Exact aspect of the choice (Free Aspect follows the panel size). */
     function chosenAspect(): number {
+        if (simulator()) {
+            const l = currentLayout();
+            return l.screenW / l.screenH;
+        }
         const r = currentResolution();
         if ((r.kind === 'aspect' || r.kind === 'fixed') && r.w > 0 && r.h > 0) return r.w / r.h;
         const g = chosenSize();
         return g.w / g.h;
     }
 
-    /** Give the running game the aspect chosen here. */
+    /**
+     * Whether the Scene panel's view is sized to the game's aspect while playing.
+     * Off by default in the Game view: the Scene view keeps its size (Scene picking
+     * and gizmos stay exact) and the game runs at that size. The Simulator always
+     * does it, since it needs the device's screen.
+     */
+    function resizesSceneView(): boolean {
+        return simulator() || !!state.settings.resizeSceneView;
+    }
+
+    /** Give the running game the aspect chosen here, or the Scene view its own size back. */
     function pushGameAspect() {
-        if (active()) bridge.setGameAspect(chosenAspect());
+        if (active()) bridge.setGameAspect(resizesSceneView() ? chosenAspect() : null);
     }
 
     let aspectTimer = 0;
-    watch(() => (active() ? chosenAspect().toFixed(4) : ''), (key) => {
+    watch(() => (active() ? (resizesSceneView() ? chosenAspect().toFixed(4) : 'scene') : ''), (key) => {
         if (!key) return;
         clearTimeout(aspectTimer);
         aspectTimer = window.setTimeout(pushGameAspect, 120);
+    });
+
+    /** Simulator: the safe area the running game is told; null = the real one. */
+    function simulatedSafeArea(): SafeInsets | null {
+        return simulator() ? safeFractions(currentLayout()) : null;
+    }
+
+    // The game is told the device's safe area while playing in the Simulator, and
+    // the real one again when switching back to the Game view.
+    let safeTimer = 0;
+    let safeSent = false;
+    watch(() => (active() ? JSON.stringify(simulatedSafeArea()) : ''), (key) => {
+        clearTimeout(safeTimer);
+        if (!key) {
+            safeSent = false; // stopped: the play session (and its override) is gone
+            return;
+        }
+        safeTimer = window.setTimeout(() => {
+            const insets = simulatedSafeArea();
+            if (!insets && !safeSent) return;
+            safeSent = !!insets;
+            bridge.setSafeArea(insets).catch((e) => fail('Could not set the simulated safe area', e));
+        }, 120);
     });
 
     // ------------------------------------------------------------- play
@@ -335,6 +407,9 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
             await bridge.play();
             state.phase = 'playing';
             pushGameAspect();
+            if (!resizesSceneView() && currentResolution().kind !== 'free') {
+                notify(`Playing at the Scene view's size. ⋮ → "Resize Scene view to game aspect" plays at ${currentResolution().label}.`);
+            }
         } catch (e) {
             fail('Could not start play mode', e);
             // Capture the state of the failed start for troubleshooting.
@@ -423,10 +498,11 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
     }
 
     function pointer(e: MouseEvent) {
-        const r = canvasEl!.getBoundingClientRect();
+        // the canvas is the game's screen in both views (the Simulator draws the device around it)
+        const p = pointerOnScreen(e.clientX, e.clientY, canvasEl!.getBoundingClientRect());
         return {
-            u: (e.clientX - r.left) / r.width,
-            v: (e.clientY - r.top) / r.height,
+            u: p.u,
+            v: p.v,
             button: e.button,
             buttons: e.buttons,
             dx: e.movementX,
@@ -460,6 +536,10 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
     bridge.loadSettings().then((saved) => {
         if (saved) Object.assign(state.settings, defaultSettings(), saved);
         if (!resolutions().some((r) => r.id === state.settings.resolutionId)) state.settings.resolutionId = 'free';
+        if (state.settings.viewMode !== 'simulator') state.settings.viewMode = 'game';
+        if (!DEVICES.some((d) => d.id === state.settings.deviceId)) state.settings.deviceId = DEFAULT_DEVICE_ID;
+        if (ORIENTATIONS.indexOf(state.settings.orientation) < 0) state.settings.orientation = 'portrait';
+        state.settings.resizeSceneView = state.settings.resizeSceneView === true;
     }).catch(() => undefined).finally(() => {
         settingsLoaded = true;
     });
@@ -479,6 +559,8 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
             devicePixelRatio: state.dpr,
             display: state.settings.display,
             error: state.error,
+            viewMode: state.settings.viewMode,
+            simulator: simulator() ? { device: state.settings.deviceId, orientation: state.settings.orientation, safeArea: simulatedSafeArea() } : null,
         };
     }
 
@@ -532,6 +614,95 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
                 const s = currentScale.value / state.dpr;
                 return { width: `${Math.max(1, g.w * s)}px`, height: `${Math.max(1, g.h * s)}px` };
             });
+            // ---- simulator: the device drawn around the game image
+            const sim = computed(() => simulator());
+            const device = computed(() => findDevice(state.settings.deviceId));
+            const layout = computed(() => currentLayout());
+            /** CSS px per device screen px (x, y): follows the shown game image. */
+            const simScale = computed(() => {
+                const g = game.value;
+                const l = layout.value;
+                const s = currentScale.value / state.dpr;
+                return { x: (g.w * s) / l.screenW, y: (g.h * s) / l.screenH };
+            });
+            const px = (n: number) => `${Math.max(0, n)}px`;
+            const stageStyle = computed(() => {
+                if (!sim.value) return {};
+                const l = layout.value;
+                const k = simScale.value;
+                return {
+                    padding: `${px(l.frame.top * k.y)} ${px(l.frame.right * k.x)} ${px(l.frame.bottom * k.y)} ${px(l.frame.left * k.x)}`,
+                    borderRadius: px(l.outerRadius * Math.min(k.x, k.y)),
+                };
+            });
+            const canvasStyle = computed(() => {
+                if (!sim.value) return display.value;
+                const k = simScale.value;
+                return { ...display.value, borderRadius: px(layout.value.screenRadius * Math.min(k.x, k.y)) };
+            });
+            /** A rect in screen px -> absolute CSS inside the device body. */
+            const onScreen = (x: number, y: number, w: number, h: number) => {
+                const l = layout.value;
+                const k = simScale.value;
+                return { left: px((l.frame.left + x) * k.x), top: px((l.frame.top + y) * k.y), width: px(w * k.x), height: px(h * k.y) };
+            };
+            const cutout = computed(() => {
+                const l = layout.value;
+                const c = l.cutout;
+                if (!sim.value || !c) return null;
+                const d = device.value.cutout;
+                return {
+                    style: onScreen(c.x, c.y, c.w, c.h),
+                    viewBox: `0 0 ${c.w} ${c.h}`,
+                    path: cutoutPath(c.kind, d.width, d.height),
+                    transform: cutoutTransform(l.orientation, d.width, d.height),
+                };
+            });
+            const indicator = computed(() => {
+                const i = layout.value.indicator;
+                if (!sim.value || !i) return null;
+                return { ...onScreen(i.x, i.y, i.w, i.h), borderRadius: px((i.h * simScale.value.y) / 2) };
+            });
+            const homeButton = computed(() => {
+                const b = layout.value.homeButton;
+                if (!sim.value || !b) return null;
+                const k = simScale.value;
+                return { left: px((b.cx - b.r) * k.x), top: px((b.cy - b.r) * k.y), width: px(2 * b.r * k.x), height: px(2 * b.r * k.y) };
+            });
+            const safeArea = computed(() => {
+                const l = layout.value;
+                if (!sim.value || !state.settings.showSafeArea) return null;
+                return onScreen(l.safe.left, l.safe.top, l.screenW - l.safe.left - l.safe.right, l.screenH - l.safe.top - l.safe.bottom);
+            });
+            const deviceGroups = computed(() => {
+                const groups: { brand: string; devices: DeviceSpec[] }[] = [];
+                for (const d of DEVICES) {
+                    let g = groups.find((x) => x.brand === d.brand);
+                    if (!g) groups.push((g = { brand: d.brand, devices: [] }));
+                    g.devices.push(d);
+                }
+                return groups;
+            });
+            const chooseMode = (mode: 'game' | 'simulator') => {
+                state.settings.viewMode = mode;
+                state.zoom = null;
+                state.menu = '';
+                lastId = -1;
+                pushGameAspect();
+            };
+            const chooseDevice = (d: DeviceSpec) => {
+                state.settings.deviceId = d.id;
+                state.zoom = null;
+                state.menu = '';
+                pushGameAspect();
+            };
+            const setOrientation = (o: Orientation) => {
+                if (state.settings.orientation === o) return;
+                state.settings.orientation = o;
+                state.zoom = null;
+                pushGameAspect();
+            };
+
             const resolution = computed(() => currentResolution());
             const resolutionList = computed(() => ({
                 special: BUILTIN_RESOLUTIONS.filter((r) => r.kind === 'free' || r.kind === 'design'),
@@ -572,7 +743,10 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
                 state.menu = '';
                 if (changed) pushGameAspect();
             };
-            const mismatch = computed(() => actualMismatch());
+            // The game runs at another size than chosen: a warning when the Scene view
+            // was sized for it (Cocos refused), expected when the Scene view keeps its size.
+            const mismatch = computed(() => (resizesSceneView() ? actualMismatch() : null));
+            const sceneSized = computed(() => (resizesSceneView() ? null : actualMismatch()));
             const removeResolution = (r: Resolution) => {
                 state.settings.custom = state.settings.custom.filter((c) => c.id !== r.id);
                 if (state.settings.resolutionId === r.id) state.settings.resolutionId = 'free';
@@ -683,6 +857,7 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
                 resolutionList,
                 sizeLabel,
                 mismatch,
+                sceneSized,
                 playing,
                 noticeVisible,
                 displayCount: DISPLAY_COUNT,
@@ -706,6 +881,19 @@ export function createGamePanel(el: HTMLElement, bridge: GameBridge, template: s
                 saveDiagnostics,
                 cycleFlip,
                 flipLabel: computed(() => (state.flip === null ? 'Auto' : state.flip ? 'On' : 'Off')),
+                sim,
+                device,
+                layout,
+                stageStyle,
+                canvasStyle,
+                cutout,
+                indicator,
+                homeButton,
+                safeArea,
+                deviceGroups,
+                chooseMode,
+                chooseDevice,
+                setOrientation,
             };
         },
         template,

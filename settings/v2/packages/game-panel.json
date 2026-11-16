@@ -1,11 +1,16 @@
 {
   "__version__": "1.0.0",
   "settings": {
-    "resolutionId": "r1170x2532",
+    "resolutionId": "free",
     "display": 0,
     "quality": "high",
     "previewWhenStopped": true,
     "showStats": false,
-    "custom": []
+    "custom": [],
+    "viewMode": "game",
+    "deviceId": "iphone-14-pro",
+    "orientation": "portrait",
+    "showSafeArea": true,
+    "resizeSceneView": false
   }
 }

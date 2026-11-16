@@ -90,6 +90,27 @@ export interface PanelSettings {
     previewWhenStopped: boolean;
     showStats: boolean;
     custom: Resolution[];
+    /** Game view or Device Simulator (Unity's dropdown at the left of the toolbar). */
+    viewMode: 'game' | 'simulator';
+    /** Simulator: device id (devices.ts) and orientation. */
+    deviceId: string;
+    orientation: 'portrait' | 'landscapeLeft' | 'landscapeRight';
+    /** Simulator: outline of the safe area over the game. */
+    showSafeArea: boolean;
+    /**
+     * Game view while playing: size the Scene panel's view to the chosen aspect so
+     * the game runs at it (off: the Scene view keeps its size and the game runs at
+     * it). The Simulator always does it: it needs the device's screen.
+     */
+    resizeSceneView: boolean;
+}
+
+/** Safe area insets as fractions of the screen (0..1): what the simulated device reports. */
+export interface SafeInsets {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
 }
 
 export interface GameBridge {
@@ -110,6 +131,11 @@ export interface GameBridge {
      * screen. null gives the webview back to Cocos.
      */
     setGameAspect(aspect: number | null): void;
+    /**
+     * Simulator: make the running game see this safe area (sys.getSafeAreaRect,
+     * cc.SafeArea). null restores the real one.
+     */
+    setSafeArea(insets: SafeInsets | null): Promise<unknown>;
     frame(req: FrameRequest): Promise<FrameResult>;
     play(): Promise<unknown>;
     pause(paused: boolean): Promise<unknown>;

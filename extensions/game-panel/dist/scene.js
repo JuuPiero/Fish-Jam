@@ -257,6 +257,8 @@ var legacy = () => globalThis.cc || {}, cce = () => globalThis.cce || {}, STALE_
   reattached: 0,
   inputs: 0,
   inputSwaps: 0,
+  /** Frames after which the director was paused again (diagnostics). */
+  repauses: 0,
   /** Change tracking of the captured image (diagnostics). */
   pixelHash: 0,
   pixelChanges: 0,
@@ -295,9 +297,26 @@ function renderSeq() {
   let { director } = cc(), root = director.root, key = root ? `${root.cumulativeTime ?? 0}|${root.frameCount ?? 0}` : `${director.getTotalFrames()}`;
   return key !== S.renderKey && (S.renderKey = key, S.renderSeq++), S.renderSeq;
 }
+function playing() {
+  return S.mode === "run" || S.mode === "pause";
+}
 function onBeginFrame() {
   let { director } = cc();
   S.selfTicking || S.editorTicks++, S.mode === "run" || S.stepOnce ? (director.isPaused() && director.resume(), S.stepOnce = !1) : S.mode === "pause" && !director.isPaused() && director.pause();
+}
+function onEndFrame() {
+  if (!playing()) return;
+  let { director } = cc();
+  director.isPaused() || (director.pause(), S.repauses++);
+}
+function withDirectorRunning(fn) {
+  let { director } = cc(), resume = S.mode === "run" && director.isPaused();
+  resume && director.resume();
+  try {
+    fn();
+  } finally {
+    resume && playing() && director.pause();
+  }
 }
 function onAfterUpdate() {
   S.updates++;
@@ -320,12 +339,12 @@ function onSceneLaunch() {
 function hook() {
   if (S.hooked) return;
   let { director, Director } = cc();
-  director.on(Director.EVENT_BEGIN_FRAME, onBeginFrame), director.on(Director.EVENT_AFTER_UPDATE, onAfterUpdate), director.on(Director.EVENT_BEFORE_DRAW, onBeforeDraw), director.on(Director.EVENT_AFTER_DRAW, onAfterDraw), director.on(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch), S.hooked = !0;
+  director.on(Director.EVENT_BEGIN_FRAME, onBeginFrame), director.on(Director.EVENT_AFTER_UPDATE, onAfterUpdate), director.on(Director.EVENT_BEFORE_DRAW, onBeforeDraw), director.on(Director.EVENT_AFTER_DRAW, onAfterDraw), director.on(Director.EVENT_END_FRAME, onEndFrame), director.on(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch), S.hooked = !0;
 }
 function unhook() {
   if (!S.hooked) return;
   let { director, Director } = cc();
-  director.off(Director.EVENT_BEGIN_FRAME, onBeginFrame), director.off(Director.EVENT_AFTER_UPDATE, onAfterUpdate), director.off(Director.EVENT_BEFORE_DRAW, onBeforeDraw), director.off(Director.EVENT_AFTER_DRAW, onAfterDraw), director.off(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch), S.hooked = !1;
+  director.off(Director.EVENT_BEGIN_FRAME, onBeginFrame), director.off(Director.EVENT_AFTER_UPDATE, onAfterUpdate), director.off(Director.EVENT_BEFORE_DRAW, onBeforeDraw), director.off(Director.EVENT_AFTER_DRAW, onAfterDraw), director.off(Director.EVENT_END_FRAME, onEndFrame), director.off(Director.EVENT_AFTER_SCENE_LAUNCH, onSceneLaunch), S.hooked = !1;
 }
 function selfTick(dt) {
   let { director } = cc();
@@ -335,7 +354,7 @@ function selfTick(dt) {
   } catch (e) {
     note(`tick: ${e.message}`);
   } finally {
-    S.selfTicking = !1;
+    S.selfTicking = !1, playing() && !director.isPaused() && director.pause();
   }
 }
 function driverLoop(now) {
@@ -641,7 +660,8 @@ function stats() {
     screenWidth: Math.round(((_c = (_b = director.root) == null ? void 0 : _b.mainWindow) == null ? void 0 : _c.width) ?? 0),
     screenHeight: Math.round(((_e = (_d = director.root) == null ? void 0 : _d.mainWindow) == null ? void 0 : _e.height) ?? 0),
     cameras: S.mirrors.size,
-    paused: director.isPaused(),
+    // The play mode: between frames the director is paused even while running.
+    paused: S.mode !== "run",
     capture: { ...S.capture, mode: S.asyncState === "off" ? "sync" : S.capture.mode },
     mutedCameras: S.muted.size
   };
@@ -695,7 +715,9 @@ function injectInput(m) {
       stopPropagation: noop,
       preventDefault: noop
     };
-    m.type === "keydown" ? target._dispatchKeyboardDownEvent(ev2) : target._dispatchKeyboardUpEvent(ev2);
+    withDirectorRunning(() => {
+      m.type === "keydown" ? target._dispatchKeyboardDownEvent(ev2) : target._dispatchKeyboardUpEvent(ev2);
+    });
     return;
   }
   let vp = inputViewport(), u = Math.min(1, Math.max(0, m.u ?? 0)), v = Math.min(1, Math.max(0, m.v ?? 0)), canvas = document.getElementById("GameCanvas"), r = canvas ? canvas.getBoundingClientRect() : null;
@@ -716,9 +738,95 @@ function injectInput(m) {
     stopPropagation: noop,
     preventDefault: noop
   };
-  withGameCamerasOnScreen(() => {
+  withGameCamerasOnScreen(() => withDirectorRunning(() => {
     m.type === "down" ? target._dispatchMouseDownEvent(ev) : m.type === "move" ? target._dispatchMouseMoveEvent(ev) : m.type === "up" ? target._dispatchMouseUpEvent(ev) : m.type === "wheel" && target._dispatchMouseScrollEvent(ev);
-  });
+  }));
+}
+var SAFE_VARS = [["top", "--safe-top"], ["bottom", "--safe-bottom"], ["left", "--safe-left"], ["right", "--safe-right"]], SAFE = {
+  insets: null,
+  /** The page's own inline values of the variables, restored afterwards. */
+  saved: null,
+  timer: 0,
+  hooked: !1
+};
+function applySafeVars() {
+  let ins = SAFE.insets;
+  if (!ins) return;
+  let { screen } = cc(), dpr = screen.devicePixelRatio || 1, w = screen.windowSize.width / dpr, h = screen.windowSize.height / dpr, style = document.documentElement.style;
+  for (let [k, name] of SAFE_VARS) {
+    let size2 = k === "top" || k === "bottom" ? h : w;
+    style.setProperty(name, `${Math.round(Math.max(0, Math.min(0.5, ins[k])) * size2)}px`);
+  }
+}
+function safeAreaComponents() {
+  let SafeArea = cc().SafeArea, scene = cc().director.getScene(), out = [];
+  if (!SafeArea || !scene) return out;
+  let walk = (n) => {
+    let c = n.getComponent(SafeArea);
+    c && c.enabledInHierarchy && out.push(c);
+    for (let ch of n.children) walk(ch);
+  };
+  return walk(scene), out;
+}
+function safeMargins(comp) {
+  let { view, sys } = cc(), vs = view.getVisibleSize(), r = sys.getSafeAreaRect(comp.symmetric !== !1);
+  return [vs.height - r.y - r.height, r.y, r.x, vs.width - r.x - r.width];
+}
+function adaptSafeArea(comp) {
+  var _a;
+  let { Widget, UITransform, widgetManager } = cc(), widget = comp.node.getComponent(Widget), ui = comp.node.getComponent(UITransform);
+  if (!widget || !ui) return;
+  widget.updateAlignment();
+  let lastPos = comp.node.position.clone(), lastAnchor = ui.anchorPoint.clone();
+  widget.isAlignTop = widget.isAlignBottom = widget.isAlignLeft = widget.isAlignRight = !0;
+  let [top, bottom, left, right] = safeMargins(comp);
+  widget.top = top, widget.bottom = bottom, widget.left = left, widget.right = right, widget.updateAlignment();
+  let cur = comp.node.position;
+  ui.width && ui.height && ui.setAnchorPoint(lastAnchor.x - (cur.x - lastPos.x) / ui.width, lastAnchor.y - (cur.y - lastPos.y) / ui.height), (_a = widgetManager == null ? void 0 : widgetManager.add) == null || _a.call(widgetManager, widget);
+}
+function adaptSafeAreas(onlyStale) {
+  let n = 0;
+  for (let comp of safeAreaComponents())
+    try {
+      if (onlyStale) {
+        let w = comp.node.getComponent(cc().Widget), m = safeMargins(comp);
+        if (w && w.isAlignTop && w.isAlignBottom && w.isAlignLeft && w.isAlignRight && Math.abs(w.top - m[0]) < 0.5 && Math.abs(w.bottom - m[1]) < 0.5 && Math.abs(w.left - m[2]) < 0.5 && Math.abs(w.right - m[3]) < 0.5) continue;
+      }
+      adaptSafeArea(comp), n++;
+    } catch (e) {
+      note(`safe area: ${e.message}`);
+    }
+  return n;
+}
+function onSafeResize() {
+  SAFE.insets && (applySafeVars(), adaptSafeAreas(!1));
+}
+function hookSafeArea() {
+  if (SAFE.hooked) return;
+  let { screen, director, Director } = cc();
+  screen.on("window-resize", onSafeResize), director.on(Director.EVENT_AFTER_SCENE_LAUNCH, onSafeResize), SAFE.timer = setInterval(() => {
+    SAFE.insets && adaptSafeAreas(!0);
+  }, 500), SAFE.hooked = !0;
+}
+function unhookSafeArea() {
+  if (!SAFE.hooked) return;
+  let { screen, director, Director } = cc();
+  screen.off("window-resize", onSafeResize), director.off(Director.EVENT_AFTER_SCENE_LAUNCH, onSafeResize), clearInterval(SAFE.timer), SAFE.timer = 0, SAFE.hooked = !1;
+}
+function restoreSafeArea() {
+  if (!SAFE.insets && !SAFE.saved) return;
+  SAFE.insets = null, unhookSafeArea();
+  let style = document.documentElement.style;
+  for (let [, name] of SAFE_VARS) {
+    let prev = SAFE.saved ? SAFE.saved[name] : "";
+    prev ? style.setProperty(name, prev) : style.removeProperty(name);
+  }
+  SAFE.saved = null;
+  try {
+    adaptSafeAreas(!1);
+  } catch {
+  }
+  note("safe area restored");
 }
 function src(fn, max = 2500) {
   try {
@@ -729,6 +837,100 @@ function src(fn, max = 2500) {
 }
 function size(s) {
   return s ? [s.width, s.height] : null;
+}
+var PROBE = {
+  listener: null,
+  last: null
+};
+function probeSceneMouse(on) {
+  let op = cce().Operation;
+  if (op)
+    try {
+      on && !PROBE.listener ? (PROBE.listener = (e) => {
+        let fields = {};
+        if (e && typeof e == "object")
+          for (let k of Object.keys(e)) {
+            let v = e[k];
+            (v === null || ["number", "string", "boolean"].includes(typeof v)) && (fields[k] = v);
+          }
+        let canvas = document.getElementById("GameCanvas"), r = canvas == null ? void 0 : canvas.getBoundingClientRect();
+        PROBE.last = {
+          at: (/* @__PURE__ */ new Date()).toISOString().slice(11, 23),
+          event: fields,
+          canvasCss: r ? [r.width, r.height] : null,
+          canvasBacking: canvas ? [canvas.width, canvas.height] : null,
+          windowInner: [window.innerWidth, window.innerHeight]
+        };
+      }, op.on("mousedown", PROBE.listener, 1e5)) : !on && PROBE.listener && (op.removeListener("mousedown", PROBE.listener), PROBE.listener = null);
+    } catch (e) {
+      note(`mouse probe: ${e.message}`), PROBE.listener = null;
+    }
+}
+function describeSizes() {
+  let { director, screen, renderer } = cc(), root = director.root, canvas = document.getElementById("GameCanvas"), r = canvas == null ? void 0 : canvas.getBoundingClientRect(), dpr = screen.devicePixelRatio || 1, editorCameras = ((root == null ? void 0 : root.cameraList) || []).filter((c) => c.window === (root == null ? void 0 : root.mainWindow) && (c.cameraUsage === renderer.scene.CameraUsage.EDITOR || /editor/i.test(c.name || ""))).map((c) => ({ name: c.name, usage: c.cameraUsage, size: [c.width, c.height], viewport: c.viewport && [c.viewport.x, c.viewport.y, c.viewport.width, c.viewport.height], enabled: c.enabled }));
+  return {
+    devicePixelRatio: dpr,
+    windowInner: [window.innerWidth, window.innerHeight],
+    canvasCss: r ? [r.x, r.y, r.width, r.height] : null,
+    canvasBacking: canvas ? [canvas.width, canvas.height] : null,
+    canvasCssTimesDpr: r ? [Math.round(r.width * dpr), Math.round(r.height * dpr)] : null,
+    screenWindowSize: size(screen.windowSize),
+    mainWindow: root != null && root.mainWindow ? [root.mainWindow.width, root.mainWindow.height] : null,
+    editorCameras,
+    lastSceneMouseDown: PROBE.last
+  };
+}
+function describeEditorInput() {
+  var _a, _b, _c;
+  let { director } = cc(), facade = null;
+  try {
+    facade = ((_b = (_a = cce().SceneFacadeManager) == null ? void 0 : _a.getCurrentFacade) == null ? void 0 : _b.call(_a)) ?? null;
+  } catch {
+    facade = null;
+  }
+  let redirected = () => {
+    try {
+      return typeof (facade == null ? void 0 : facade.isInputRedirected) == "function" ? !!facade.isInputRedirected() : null;
+    } catch (e) {
+      return `[${e.message}]`;
+    }
+  }, wasPaused = director.isPaused(), probe = null;
+  try {
+    director.pause();
+    let whenPaused = redirected();
+    director.resume();
+    let whenRunning = redirected();
+    probe = { whenDirectorPaused: whenPaused, whenDirectorRunning: whenRunning };
+  } finally {
+    wasPaused ? director.pause() : director.resume();
+  }
+  let op = cce().Operation, events = op == null ? void 0 : op._events, listeners = {}, entries = events instanceof Map ? [...events.entries()] : events && typeof events == "object" ? Object.entries(events) : [];
+  for (let [type, value] of entries) {
+    if (!/^mouse(down|move|up)$/.test(type)) continue;
+    let list = Array.isArray(value) ? value : value ? [value] : [];
+    listeners[type] = list.slice(0, 10).map((l) => typeof l == "function" ? { fn: src(l, 500) } : { keys: l && typeof l == "object" ? Object.keys(l) : typeof l, priority: l == null ? void 0 : l.priority, fn: src((l == null ? void 0 : l.listener) ?? (l == null ? void 0 : l.callback) ?? (l == null ? void 0 : l.fn) ?? (l == null ? void 0 : l.func), 500) });
+  }
+  return {
+    directorPausedNow: wasPaused,
+    repausedFrames: S.repauses,
+    facade: facade ? {
+      type: ((_c = facade.constructor) == null ? void 0 : _c.name) ?? null,
+      isEnter: facade._isEnter ?? null,
+      inputRedirected: redirected(),
+      probe,
+      sources: {
+        isInputRedirected: src(facade.isInputRedirected, 1500),
+        redirectInput: src(facade.redirectInput, 1500),
+        registerOperation: src(facade.registerOperation, 3e3)
+      }
+    } : null,
+    operation: op ? {
+      eventsType: Object.prototype.toString.call(events),
+      listeners,
+      emitMouseEvent: src(op._emitMouseEvent, 2e3),
+      emit: src(op._emit, 1500)
+    } : null
+  };
 }
 var methods = {
   /**
@@ -787,7 +989,7 @@ var methods = {
   /** Called by the panel right after PIE was started and paused. */
   gpPlay() {
     let pp = cce().PreviewPlay;
-    return pp != null && pp.isPause && !pp.isPause() ? (note("play refused: Play-in-Editor is not paused in this process"), { error: "This scene process is not running Play-in-Editor" }) : (S.mode = "run", S.driver = "self", hook(), startDriver(), note("play"), stats());
+    return pp != null && pp.isPause && !pp.isPause() ? (note("play refused: Play-in-Editor is not paused in this process"), { error: "This scene process is not running Play-in-Editor" }) : (S.mode = "run", S.driver = "self", hook(), startDriver(), probeSceneMouse(!0), note("play"), stats());
   },
   gpPause(paused) {
     return S.mode = paused ? "pause" : "run", paused && cc().director.pause(), repaint(), note(paused ? "pause" : "resume"), stats();
@@ -796,9 +998,26 @@ var methods = {
     var _a, _b;
     return S.mode = "pause", S.driver === "step" ? await ((_b = (_a = cce().PreviewPlay) == null ? void 0 : _a.step) == null ? void 0 : _b.call(_a)) : (selfTick(1 / 60), cc().director.pause()), stats();
   },
+  /**
+   * Device Simulator: the running game sees this safe area (fractions of the
+   * screen) in sys.getSafeAreaRect and cc.SafeArea; null restores the real one.
+   */
+  gpSafeArea(insets) {
+    if (!insets)
+      return restoreSafeArea(), { simulated: !1 };
+    let style = document.documentElement.style;
+    if (!SAFE.saved) {
+      SAFE.saved = {};
+      for (let [, name] of SAFE_VARS) SAFE.saved[name] = style.getPropertyValue(name);
+    }
+    let num = (v) => typeof v == "number" && Number.isFinite(v) ? v : 0;
+    SAFE.insets = { top: num(insets.top), bottom: num(insets.bottom), left: num(insets.left), right: num(insets.right) }, hookSafeArea(), applySafeVars();
+    let n = adaptSafeAreas(!1), r = cc().sys.getSafeAreaRect(!1);
+    return note(`safe area ${JSON.stringify(SAFE.insets)}`), { simulated: !0, rect: [r.x, r.y, r.width, r.height], safeAreas: n };
+  },
   gpStop() {
     var _a;
-    return S.mode = "off", S.stepOnce = !1, stopDriver(), destroyMirrors(), unmuteAll(), S.scene = null, S.sentFrame = -1, S.queuedSeq = -1, (_a = S.readback) == null || _a.drop(), note("stop"), !0;
+    return restoreSafeArea(), probeSceneMouse(!1), S.mode = "off", S.stepOnce = !1, stopDriver(), destroyMirrors(), unmuteAll(), S.scene = null, S.sentFrame = -1, S.queuedSeq = -1, (_a = S.readback) == null || _a.drop(), note("stop"), !0;
   },
   gpDetach() {
     return S.mode === "off" && detach(), !0;
@@ -882,7 +1101,8 @@ var methods = {
         msSincePixelChange: S.pixelChangedAt ? Date.now() - S.pixelChangedAt : null,
         reattached: S.reattached,
         inputs: S.inputs,
-        inputCameraSwaps: S.inputSwaps
+        inputCameraSwaps: S.inputSwaps,
+        directorRepauses: S.repauses
       },
       meshRenderers: meshes.slice(0, 30).map((m) => {
         var _a2, _b2, _c2, _d2;
@@ -935,6 +1155,21 @@ var methods = {
         };
       }),
       log: S.log.slice(),
+      editorInput: (() => {
+        try {
+          return describeEditorInput();
+        } catch (e) {
+          return { error: e.message };
+        }
+      })(),
+      sizes: (() => {
+        try {
+          return describeSizes();
+        } catch (e) {
+          return { error: e.message };
+        }
+      })(),
+      simulatedSafeArea: SAFE.insets,
       sceneFacadeManagerMethods: sfm ? proto(sfm) : null,
       previewPlayMethods: pp ? proto(pp) : null,
       sources: {

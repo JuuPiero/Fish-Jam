@@ -1,9 +1,9 @@
 /**
  * Runs the real Game panel UI in a plain browser with a stub bridge that renders
  * a fake game. `npm run preview`, then open tests/preview/out/preview.html#<state>.
- * States: stopped | playing | aspect | display | more | add | nocam | error | interact | debug
+ * States: stopped | playing | aspect | display | more | add | nocam | error | simulator | simulator-landscape | device | interact | debug
  */
-import { FrameRequest, FrameResult, GameBridge, InputMessage, PanelSettings } from '../../source/bridge';
+import { FrameRequest, FrameResult, GameBridge, InputMessage, PanelSettings, SafeInsets } from '../../source/bridge';
 import { createGamePanel } from '../../source/panels/default/app';
 import { createAspectController } from '../../source/pie-aspect';
 
@@ -19,12 +19,16 @@ const stub = {
     calls: [] as string[],
     lastReq: null as FrameRequest | null,
     saved: null as PanelSettings | null,
-    /** Simulated Play-in-Editor screen size (device px); null = follows setGameAspect / the panel. */
+    /** Simulated Play-in-Editor screen size (device px); null = follows setGameAspect / the Scene view. */
     screen: null as null | [number, number],
+    /** The Scene panel's view (device px): the game's screen while playing when its size is left alone. */
+    sceneView: [960, 700] as [number, number],
     aspect: null as number | null,
     binaryFrames: 0,
     answeredAt: 0,
     gaps: [] as number[],
+    /** Safe area the game was told (Simulator); undefined = never set. */
+    safe: undefined as SafeInsets | null | undefined,
 };
 
 function render(w: number, h: number): Promise<string> {
@@ -73,11 +77,15 @@ async function stubFrame(req: FrameRequest): Promise<FrameResult> {
     const w = Math.max(2, Math.round(req.gameWidth * scale));
     const h = Math.max(2, Math.round(req.gameHeight * scale));
     stub.frameId++;
+    // The game's screen: while playing, the Scene view sized to the pushed aspect, or the Scene view as it is.
+    const screen: [number, number] = stub.screen ? stub.screen
+        : stub.mode === 'off' ? [req.gameWidth, req.gameHeight]
+        : stub.aspect ? [Math.round(600 * stub.aspect), 600] : stub.sceneView;
     const stats = {
         mode: stub.mode, driver: 'self' as const, fps: 60, drawCalls: 14, tris: 3420,
         gameWidth: req.gameWidth, gameHeight: req.gameHeight, designWidth: 1280, designHeight: 720,
-        screenWidth: stub.screen ? stub.screen[0] : stub.aspect && stub.mode !== 'off' ? Math.round(600 * stub.aspect) : req.gameWidth,
-        screenHeight: stub.screen ? stub.screen[1] : stub.aspect && stub.mode !== 'off' ? 600 : req.gameHeight,
+        screenWidth: screen[0],
+        screenHeight: screen[1],
         cameras, paused: stub.mode !== 'run',
         capture: { mode: 'async+worker', ms: 3.2, encodeMs: 3.2, kb: 41.5 },
         mutedCameras: stub.mode === 'off' ? 0 : 2,
@@ -110,6 +118,11 @@ const bridge: GameBridge = {
     setGameAspect(a) {
         stub.calls.push(`setGameAspect(${a === null ? 'null' : a.toFixed(3)})`);
         stub.aspect = a;
+    },
+    async setSafeArea(insets) {
+        stub.calls.push(`setSafeArea(${insets ? 'on' : 'null'})`);
+        stub.safe = insets;
+        return true;
     },
     async frame(req: FrameRequest): Promise<FrameResult> {
         stub.lastReq = req;
@@ -227,6 +240,85 @@ async function aspectControllerTests(check: (name: string, cond: boolean, detail
     flex.remove();
 }
 
+/** Device Simulator: frame, rotation, device choice, safe area, input, and back to the Game view. */
+async function simulatorTests(check: (name: string, cond: boolean, detail?: unknown) => void) {
+    const canvas = $('canvas.game') as HTMLCanvasElement;
+    const view = () => $('.view').getBoundingClientRect();
+    const near = (a: number, b: number, eps: number) => Math.abs(a - b) <= eps;
+
+    click($('.tb-mode'));
+    await wait(50);
+    menuItem('Simulator').click();
+    await wait(500);
+    let stage = $('.stage.device');
+    let cbox = canvas.getBoundingClientRect();
+    check('simulator: the device body is drawn around the game', !!stage && !$('.tb-aspect') && !!$('.tb-device'));
+    check('simulator: game at the device resolution (iPhone 14 Pro portrait)', stub.lastReq!.gameWidth === 1179 && stub.lastReq!.gameHeight === 2556, stub.lastReq);
+    let sbox = stage.getBoundingClientRect();
+    check('simulator: the body is bigger than the screen and fits the view',
+        sbox.width > cbox.width + 2 && sbox.height > cbox.height + 2 && sbox.width <= view().width + 1 && sbox.height <= view().height + 1,
+        [sbox.width, sbox.height, cbox.width, cbox.height, view().width, view().height]);
+    const isle = $('.sim-cutout').getBoundingClientRect();
+    check('simulator: Dynamic Island at the top centre of the screen',
+        near(isle.left + isle.width / 2, cbox.left + cbox.width / 2, 1.5) && isle.top >= cbox.top && isle.top < cbox.top + cbox.height * 0.05, [isle, cbox]);
+    const safe = $('.sim-safe').getBoundingClientRect();
+    check('simulator: safe area outline below the island', !!$('.sim-safe') && safe.top >= isle.bottom - 0.5 && near(safe.width, cbox.width, 1), [safe, isle]);
+    check('simulator: home indicator at the bottom', !!$('.sim-indicator') && $('.sim-indicator').getBoundingClientRect().bottom <= cbox.bottom);
+
+    // Landscape Left: resolution swaps, the island moves to the left.
+    click($$('.tb-rot .tb-btn')[1]);
+    await wait(500);
+    cbox = canvas.getBoundingClientRect();
+    const isleL = $('.sim-cutout').getBoundingClientRect();
+    check('landscape left: game 2556x1179', stub.lastReq!.gameWidth === 2556 && stub.lastReq!.gameHeight === 1179, stub.lastReq);
+    check('landscape left: island on the left, centred vertically',
+        isleL.right < cbox.left + cbox.width / 4 && near(isleL.top + isleL.height / 2, cbox.top + cbox.height / 2, 1.5), [isleL, cbox]);
+
+    // Another device from the menu.
+    click($('.tb-device'));
+    await wait(50);
+    menuItem('Pixel 7').click();
+    await wait(500);
+    check('Pixel 7 landscape: 2400x1080', stub.lastReq!.gameWidth === 2400 && stub.lastReq!.gameHeight === 1080, stub.lastReq);
+    check('settings keep the device and orientation', app.state.settings.deviceId === 'pixel-7' && app.state.settings.orientation === 'landscapeLeft'
+        && !!stub.saved && stub.saved.viewMode === 'simulator', stub.saved);
+
+    // Play in the simulator: the game gets the device aspect and safe area.
+    ($('.pbtn') as HTMLButtonElement).click();
+    await wait(800);
+    check('play: the game gets the device aspect', stub.calls.includes('setGameAspect(2.222)'), stub.calls.slice(-6));
+    check('play: the game gets the device safe area', !!stub.safe && near(stub.safe.left, 118 / 2400, 1e-6) && stub.safe.right === 0, stub.safe);
+
+    cbox = canvas.getBoundingClientRect();
+    const before = stub.inputs.length;
+    canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, buttons: 1, clientX: cbox.left + cbox.width / 2, clientY: cbox.top + cbox.height / 2 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, buttons: 0, clientX: cbox.left + cbox.width / 2, clientY: cbox.top + cbox.height / 2 }));
+    await wait(100);
+    const down = stub.inputs.slice(before).find((m) => m.type === 'down');
+    check('input: the screen centre maps to (0.5, 0.5)', !!down && near(down.u!, 0.5, 0.01) && near(down.v!, 0.5, 0.01), down);
+    stage = $('.stage.device');
+    sbox = stage.getBoundingClientRect();
+    const n = stub.inputs.length;
+    stage.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, buttons: 1, clientX: sbox.left + 2, clientY: sbox.top + sbox.height / 2 }));
+    await wait(100);
+    check('input: a press on the bezel does nothing', stub.inputs.length === n, stub.inputs.slice(n));
+
+    // Back to the Game view while playing: real safe area again, Game layout as before.
+    click($('.tb-mode'));
+    await wait(50);
+    menuItem('Game').click();
+    await wait(600);
+    cbox = canvas.getBoundingClientRect();
+    check('back to Game: the real safe area again', stub.safe === null && stub.calls.includes('setSafeArea(null)'), stub.calls.slice(-6));
+    check('back to Game: no device body, the Scene view gets its size back (option off)', !$('.stage.device') && !!$('.tb-aspect')
+        && stub.calls[stub.calls.lastIndexOf('setGameAspect(null)')] === 'setGameAspect(null)' && stub.calls.lastIndexOf('setGameAspect(null)') > stub.calls.lastIndexOf('setGameAspect(2.222)')
+        && near(cbox.width / cbox.height, stub.sceneView[0] / stub.sceneView[1], 0.02), [cbox.width, cbox.height, stub.calls.slice(-6)]);
+    const root = $('.gp');
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true }));
+    await wait(300);
+    check('simulator section: stopped', app.state.phase === 'stopped', app.state.phase);
+}
+
 async function interact() {
     const out: string[] = [];
     const check = (name: string, cond: boolean, detail: unknown = '') =>
@@ -281,12 +373,12 @@ async function interact() {
     check('settings saved', !!stub.saved && stub.saved.custom.length === 1, stub.saved);
 
     // Display 2 has no camera
-    click($('.tb-drop'));
+    click($('.tb-display'));
     await wait(50);
     menuItem('Display 2').click();
     await wait(400);
     check('Display 2: "No cameras rendering"', $('.empty') !== null && $('.empty').textContent!.includes('No cameras rendering') && stub.lastReq!.display === 1, $('.empty')?.textContent);
-    click($('.tb-drop'));
+    click($('.tb-display'));
     await wait(50);
     menuItem('Display 1').click();
     await wait(400);
@@ -335,7 +427,24 @@ async function interact() {
     await wait(50);
     check('same press via shortcut message is ignored', app.state.phase === 'paused', app.state.phase);
 
-    check('Play gives the game the chosen 16:9 aspect', stub.calls.includes('setGameAspect(1.778)'), stub.calls);
+    // Default: the Scene view keeps its size, the game runs at it.
+    const sceneAspect = stub.sceneView[0] / stub.sceneView[1];
+    box = canvas.getBoundingClientRect();
+    check('Play leaves the Scene view its size', stub.calls.includes('setGameAspect(null)') && !stub.calls.includes('setGameAspect(1.778)'), stub.calls);
+    check('... shows the game at the Scene view\'s aspect, without a warning', Math.abs(box.width / box.height - sceneAspect) < 0.02 && !$('.tb-aspect .tb-warn')
+        && ($('.tb-aspect').getAttribute('title') || '').includes('Scene view'), [box.width, box.height, $('.tb-aspect').getAttribute('title')]);
+    check('... requests frames at that aspect', Math.abs(stub.lastReq!.gameWidth / stub.lastReq!.gameHeight - sceneAspect) < 0.01, stub.lastReq);
+    check('... and says so once', app.state.notice.includes('Scene view\'s size'), app.state.notice);
+    // ⋮ -> Resize Scene view to game aspect: the old behaviour, live.
+    click($$('.tb-side.right .tb-btn')[1]);
+    await wait(50);
+    const resizeItem = menuItem('Resize Scene view');
+    check('⋮ has the "Resize Scene view to game aspect" toggle, off', !!resizeItem && !(resizeItem.querySelector('input') as HTMLInputElement).checked);
+    (resizeItem.querySelector('input') as HTMLInputElement).click();
+    await wait(500);
+    click($('.view'));
+    await wait(50);
+    check('Play gives the game the chosen 16:9 aspect', stub.calls.includes('setGameAspect(1.778)') && app.state.settings.resizeSceneView === true, stub.calls.slice(-4));
 
     // Change the aspect while playing (Unity-style): applied live.
     click($('.tb-aspect'));
@@ -365,6 +474,9 @@ async function interact() {
     await wait(400);
     check('stopped: back to the chosen 16:9', Math.abs(canvas.getBoundingClientRect().width / canvas.getBoundingClientRect().height - 16 / 9) < 0.02 && !$('.tb-aspect .tb-warn'));
 
+    // The Simulator resizes the Scene view whatever the ⋮ option says: test it with the option off.
+    app.state.settings.resizeSceneView = false;
+    await simulatorTests(check);
     await aspectControllerTests(check);
 
     const pre = document.createElement('pre');
@@ -414,7 +526,20 @@ async function interact() {
         }
     } else if (state === 'display') {
         await wait(300);
-        click($('.tb-drop'));
+        click($('.tb-display'));
+    } else if (state === 'simulator' || state === 'simulator-landscape' || state === 'device') {
+        app.state.settings.viewMode = 'simulator';
+        app.state.settings.showSafeArea = true;
+        if (state === 'simulator-landscape') {
+            app.state.settings.deviceId = 'pixel-7';
+            app.state.settings.orientation = 'landscapeLeft';
+        }
+        await app.togglePlay();
+        stub.cursor = { u: 0.5, v: 0.3 };
+        if (state === 'device') {
+            await wait(300);
+            click($('.tb-device'));
+        }
     } else if (state === 'error') {
         app.state.error = 'Could not start play mode: Cocos refused to start Play-in-Editor, check the Console';
     }

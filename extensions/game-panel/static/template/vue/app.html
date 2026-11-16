@@ -1,13 +1,40 @@
-<div ref="root" class="gp" :class="{ playmode: playing, compact: s.viewW > 0 && s.viewW < 620, tiny: s.viewW > 0 && s.viewW < 440 }" tabindex="-1" @keydown="onKeyDown" @keyup="onKeyUp" @focusout="onBlur">
-    <!-- Toolbar: Display ▾ | Aspect ▾ | Scale ... ▶ ⏸ ⏭ ... Stats | ⋮ -->
+<div ref="root" class="gp" :class="{ playmode: playing, sim: sim, compact: s.viewW > 0 && s.viewW < 620, tiny: s.viewW > 0 && s.viewW < 440 }" tabindex="-1" @keydown="onKeyDown" @keyup="onKeyUp" @focusout="onBlur">
+    <!-- Toolbar: Game|Simulator ▾ | Display ▾ | Aspect ▾ (Game) or Device ▾ + rotation + Safe Area (Simulator) | Scale ... ▶ ⏸ ⏭ ... Stats | ⋮ -->
     <div class="tb">
         <div class="tb-side">
-            <button class="tb-btn tb-drop" :class="{ on: s.menu === 'display' }" title="Target display"
+            <button class="tb-btn tb-drop tb-mode" :class="{ on: s.menu === 'mode' }" title="Game view or Device Simulator"
+                @mousedown.stop @click="openMenu('mode', $event)">
+                {{ sim ? 'Simulator' : 'Game' }}<span class="caret"></span>
+            </button>
+            <button class="tb-btn tb-drop tb-display" :class="{ on: s.menu === 'display' }" title="Target display"
                 @mousedown.stop @click="openMenu('display', $event)">
                 Display {{ s.settings.display + 1 }}<span class="caret"></span>
             </button>
-            <button class="tb-btn tb-drop tb-aspect" :class="{ on: s.menu === 'aspect' }"
-                :title="mismatch ? 'The game is running at ' + mismatch.w + '×' + mismatch.h + ' and has not switched to the chosen size.' : 'Game resolution / aspect ratio'"
+            <template v-if="sim">
+                <button class="tb-btn tb-drop tb-device" :class="{ on: s.menu === 'device' }"
+                    :title="mismatch ? 'The game is running at ' + mismatch.w + '×' + mismatch.h + ' and has not switched to the device size.' : device.name"
+                    @mousedown.stop @click="openMenu('device', $event)">
+                    <span v-if="mismatch" class="tb-warn">!</span>
+                    <span class="tb-ellipsis">{{ device.name.split(' / ')[0] }}</span>
+                    <em>{{ game.w }}×{{ game.h }}</em><span class="caret"></span>
+                </button>
+                <div class="tb-rot">
+                    <button class="tb-btn tb-icon" :class="{ on: s.settings.orientation === 'portrait' }" title="Portrait" @click="setOrientation('portrait')">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5" fill="none" stroke="currentColor" /><rect x="6.5" y="2.8" width="3" height="1.2" rx="0.6" fill="currentColor" /></svg>
+                    </button>
+                    <button class="tb-btn tb-icon" :class="{ on: s.settings.orientation === 'landscapeLeft' }" title="Landscape Left (top of the device to the left)" @click="setOrientation('landscapeLeft')">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="1.5" fill="none" stroke="currentColor" /><rect x="2.8" y="6.5" width="1.2" height="3" rx="0.6" fill="currentColor" /></svg>
+                    </button>
+                    <button class="tb-btn tb-icon" :class="{ on: s.settings.orientation === 'landscapeRight' }" title="Landscape Right (top of the device to the right)" @click="setOrientation('landscapeRight')">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="1.5" fill="none" stroke="currentColor" /><rect x="12" y="6.5" width="1.2" height="3" rx="0.6" fill="currentColor" /></svg>
+                    </button>
+                </div>
+                <button class="tb-btn tb-safe" :class="{ on: s.settings.showSafeArea }" title="Show the safe area" @click="s.settings.showSafeArea = !s.settings.showSafeArea">Safe Area</button>
+            </template>
+            <button v-else class="tb-btn tb-drop tb-aspect" :class="{ on: s.menu === 'aspect' }"
+                :title="mismatch ? 'The game is running at ' + mismatch.w + '×' + mismatch.h + ' and has not switched to the chosen size.'
+                    : sceneSized ? 'While playing, the game runs at the Scene view\'s size (shown here as ' + sceneSized.w + '×' + sceneSized.h + '). ⋮ → Resize Scene view to game aspect runs it at the chosen size.'
+                    : 'Game resolution / aspect ratio'"
                 @mousedown.stop @click="openMenu('aspect', $event)">
                 <span v-if="mismatch" class="tb-warn">!</span>
                 <span class="tb-ellipsis">{{ resolution.label }}</span>
@@ -44,8 +71,19 @@
     </div>
 
     <div ref="view" class="view" @mousedown="closeMenus">
-        <canvas ref="canvas" class="game" v-show="s.hasFrame" :style="display"
-            @mousedown="onDown" @mousemove="onHover" @wheel="onWheel" @contextmenu.prevent></canvas>
+        <!-- Game view: the stage is layout-neutral (display: contents). Simulator: it is the device body. -->
+        <div class="stage" :class="{ device: sim }" v-show="s.hasFrame" :style="stageStyle">
+            <canvas ref="canvas" class="game" :style="canvasStyle"
+                @mousedown="onDown" @mousemove="onHover" @wheel="onWheel" @contextmenu.prevent></canvas>
+            <template v-if="sim">
+                <div v-if="safeArea" class="sim-safe" :style="safeArea"></div>
+                <svg v-if="cutout" class="sim-cutout" :style="cutout.style" :viewBox="cutout.viewBox" preserveAspectRatio="none" @mousedown.stop.prevent @contextmenu.prevent>
+                    <path :d="cutout.path" :transform="cutout.transform" />
+                </svg>
+                <div v-if="indicator" class="sim-indicator" :style="indicator"></div>
+                <div v-if="homeButton" class="sim-home" :style="homeButton"></div>
+            </template>
+        </div>
 
         <div v-if="!s.hasFrame" class="empty">
             <template v-if="s.stats && s.stats.cameras === 0">
@@ -80,6 +118,23 @@
         <transition name="fade">
             <div v-if="noticeVisible" class="notice">{{ s.notice }}</div>
         </transition>
+    </div>
+
+    <!-- Game / Simulator menu -->
+    <div v-if="s.menu === 'mode'" class="menu" :style="{ left: s.menuLeft + 'px' }" @mousedown.stop>
+        <div class="mi" :class="{ checked: !sim }" @click="chooseMode('game')"><span class="tick"></span>Game</div>
+        <div class="mi" :class="{ checked: sim }" @click="chooseMode('simulator')"><span class="tick"></span>Simulator</div>
+    </div>
+
+    <!-- Device menu (Simulator) -->
+    <div v-if="s.menu === 'device'" class="menu aspect-menu device-menu" :style="{ left: s.menuLeft + 'px' }" @mousedown.stop>
+        <template v-for="(g, gi) in deviceGroups" :key="g.brand">
+            <div v-if="gi > 0" class="sep"></div>
+            <div class="mi-head">{{ g.brand }}</div>
+            <div v-for="d in g.devices" :key="d.id" class="mi" :class="{ checked: s.settings.deviceId === d.id }" @click="chooseDevice(d)">
+                <span class="tick"></span>{{ d.name }}<em>{{ d.width }}×{{ d.height }}</em>
+            </div>
+        </template>
     </div>
 
     <!-- Display menu -->
@@ -136,6 +191,7 @@
     <!-- More menu -->
     <div v-if="s.menu === 'more'" class="menu" style="right: 4px" @mousedown.stop>
         <label class="mi"><input class="check" type="checkbox" v-model="s.settings.previewWhenStopped" /> Show cameras when not playing</label>
+        <label class="mi" title="While playing in the Game view, size the Scene panel's view to the chosen aspect so the game runs at it. Off: the Scene view keeps its size (exact picking and gizmos) and the game runs at that size. The Simulator always resizes it."><input class="check" type="checkbox" v-model="s.settings.resizeSceneView" /> Resize Scene view to game aspect</label>
         <div class="mi" @click="s.settings.quality = s.settings.quality === 'high' ? 'low' : 'high'">Image quality: <b>{{ s.settings.quality === 'high' ? 'High' : 'Low (faster)' }}</b></div>
         <div class="mi" @click="cycleFlip">Flip image vertically: <b>{{ flipLabel }}</b></div>
         <div class="sep"></div>

@@ -1,6 +1,6 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { FrameRequest, FrameResult, GameBridge, InputMessage, PanelSettings } from './bridge';
+import { FrameRequest, FrameResult, GameBridge, InputMessage, PanelSettings, SafeInsets } from './bridge';
 import { createAspectController } from './pie-aspect';
 
 const PACKAGE = 'game-panel';
@@ -128,18 +128,67 @@ function aspectContainer(el: any): HTMLElement | null {
     return el.parentElement || (el.getRootNode() as ShadowRoot).host || null;
 }
 
+function rectOf(el: any) {
+    const r = el.getBoundingClientRect();
+    return [Math.round(r.x * 10) / 10, Math.round(r.y * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10];
+}
+
 function describeElement(el: any) {
     if (!el) return null;
-    const r = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
     return {
         tag: el.tagName,
         id: el.id,
         className: String(el.className || ''),
+        attributes: Array.from((el.attributes || []) as ArrayLike<Attr>).map((a) => a.name).filter((n) => n !== 'style' && n !== 'class'),
         style: el.getAttribute('style'),
-        computed: { position: cs.position, display: cs.display, width: cs.width, height: cs.height, transform: cs.transform, left: cs.left, top: cs.top },
-        rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
+        computed: {
+            position: cs.position, display: cs.display, width: cs.width, height: cs.height, transform: cs.transform,
+            left: cs.left, top: cs.top, margin: cs.margin, flex: cs.flex, pointerEvents: cs.pointerEvents, zoom: (cs as any).zoom,
+        },
+        rect: rectOf(el),
     };
+}
+
+/**
+ * Read-only record of the last mouse press over the Scene view while playing:
+ * where it really was, and where the PIE webview and its container were. The
+ * Scene panel catches the mouse on the container (the webview has
+ * pointer-events: none) and forwards coordinates to the scene process, which
+ * records what it received (scene.sizes.lastSceneMouseDown).
+ */
+const pressProbe = {
+    target: null as HTMLElement | null,
+    last: null as null | Record<string, unknown>,
+    onDown: (e: MouseEvent) => {
+        const el = pie?.el;
+        if (!el) return;
+        const box = aspectContainer(el);
+        pressProbe.last = {
+            at: new Date().toISOString().slice(11, 23),
+            client: [e.clientX, e.clientY],
+            button: e.button,
+            target: (e.target as HTMLElement | null)?.tagName ?? null,
+            webviewRect: rectOf(el),
+            containerRect: box ? rectOf(box) : null,
+            relativeToWebview: [Math.round((e.clientX - el.getBoundingClientRect().x) * 10) / 10, Math.round((e.clientY - el.getBoundingClientRect().y) * 10) / 10],
+            relativeToContainer: box ? [Math.round((e.clientX - box.getBoundingClientRect().x) * 10) / 10, Math.round((e.clientY - box.getBoundingClientRect().y) * 10) / 10] : null,
+            devicePixelRatio: window.devicePixelRatio || 1,
+        };
+    },
+};
+
+function watchPresses(on: boolean) {
+    const box = on && pie ? aspectContainer(pie.el) : null;
+    if (pressProbe.target && pressProbe.target !== box) {
+        pressProbe.target.removeEventListener('mousedown', pressProbe.onDown, true);
+        pressProbe.target = null;
+    }
+    if (box && !pressProbe.target) {
+        // capture + passive: observes only, never changes or stops the event
+        box.addEventListener('mousedown', pressProbe.onDown, { capture: true, passive: true });
+        pressProbe.target = box;
+    }
 }
 
 function pieElementInfo() {
@@ -151,6 +200,8 @@ function pieElementInfo() {
         webview: describeElement(el),
         parents: chain,
         aspect: aspect.info(),
+        devicePixelRatio: window.devicePixelRatio || 1,
+        lastPress: pressProbe.last,
     };
 }
 
@@ -180,6 +231,7 @@ export const editorBridge: GameBridge = {
             const best = candidates[0];
             if (best && best.info.who!.previewPaused) {
                 pie = { el: best.el, who: best.info.who! };
+                watchPresses(true);
                 return;
             }
             // PIE in the edit process itself (other editor versions/settings).
@@ -190,10 +242,15 @@ export const editorBridge: GameBridge = {
     },
     disconnectPie() {
         aspect.release();
+        watchPresses(false);
         pie = null;
     },
     setGameAspect(value: number | null) {
         aspect.set(pie ? pie.el : null, value);
+    },
+    setSafeArea(insets: SafeInsets | null) {
+        // only the running game (PIE) is told; the edit scene keeps the real safe area
+        return pie ? callWebview(pie.el, 'gpSafeArea', [insets]) : Promise.resolve(false);
     },
     async frame(req: FrameRequest) {
         // The PIE webview channel (Electron IPC, structured clone) carries bytes:

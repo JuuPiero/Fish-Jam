@@ -118,9 +118,24 @@
     border-top: 4px solid currentColor;
 }
 
-.tb-aspect {
+.tb-aspect,
+.tb-device {
     max-width: 260px;
     min-width: 0;
+}
+
+.tb-rot {
+    display: inline-flex;
+    align-items: stretch;
+}
+
+.tb-device {
+    flex: none;
+}
+
+/* Simulator: more controls on the left, so the right side only takes what it needs. */
+.gp.sim .tb-side.right {
+    flex: none;
 }
 
 .tb-ellipsis {
@@ -199,7 +214,16 @@
 }
 
 .gp.compact .tb-scale > span,
-.gp.compact .tb-aspect em {
+.gp.compact .tb-aspect em,
+.gp.compact .tb-device em {
+    display: none;
+}
+
+.gp.compact .tb-device {
+    max-width: 140px;
+}
+
+.gp.tiny .tb-safe {
     display: none;
 }
 
@@ -287,6 +311,46 @@
     display: block;
     background: #000000;
     image-rendering: auto;
+}
+
+/* Game view: the stage does not take part in the layout. */
+.stage {
+    display: contents;
+}
+
+/* Simulator: the stage is the device body; padding is the bezel around the screen (the canvas). */
+.stage.device {
+    display: block;
+    position: relative;
+    flex: none;
+    background: #141416;
+    border: 1px solid #303034;
+}
+
+.sim-cutout {
+    position: absolute;
+    display: block;
+    overflow: visible;
+    fill: #000000;
+}
+
+.sim-indicator {
+    position: absolute;
+    background: rgba(240, 240, 240, 0.85);
+    pointer-events: none;
+}
+
+.sim-home {
+    position: absolute;
+    border: 1px solid #3c3c42;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.sim-safe {
+    position: absolute;
+    border: 1px solid rgba(76, 141, 224, 0.9);
+    pointer-events: none;
 }
 
 .empty {
@@ -473,6 +537,12 @@
 }
 
 .mi-kind {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.mi-head {
+    padding: 3px 12px 1px 8px;
     color: var(--muted);
     font-size: 11px;
 }
