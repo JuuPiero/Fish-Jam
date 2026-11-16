@@ -201,6 +201,31 @@ export class BubbleManager extends Component {
         }
     }
 
+    // Fish in bubbles still queued (not on the board yet), counting only the first `limit` of
+    // them: the custom curve asks for fish that are coming, but not ones many spawns away.
+    collectQueuedFishCounts(counts: Map<number, number>, limit: number = Number.POSITIVE_INFINITY): void {
+        const end = Math.min(this._queue.length, limit);
+        for (let i = 0; i < end; i++) {
+            for (const fish of this._queue[i].bubble.fishes) {
+                counts.set(fish.id, (counts.get(fish.id) ?? 0) + 1);
+            }
+        }
+    }
+
+    // Moves the queued bubbles holding any of `fishIds` to the front of the spawn queue (keeping
+    // their order among themselves), so the fish an order needs show up sooner.
+    promoteQueuedBubblesWith(fishIds: Set<number>): void {
+        if (fishIds.size === 0) {
+            return;
+        }
+        const wanted: PendingBubble[] = [];
+        const rest: PendingBubble[] = [];
+        for (const pending of this._queue) {
+            (pending.bubble.fishes.some(fish => fishIds.has(fish.id)) ? wanted : rest).push(pending);
+        }
+        this._queue = wanted.concat(rest);
+    }
+
     // Largest number of `fishId` fish found together in any single active bubble right now - one
     // bubble holding enough on its own is a stronger "ready to go" signal than merely reachable
     // (the same total scattered across several bubbles/bench slots still needs several pops).

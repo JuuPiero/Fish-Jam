@@ -1768,6 +1768,12 @@
     "count": 4,
     "relayoutDuration": 0.25,
     "maxSameOrderInARow": 2,
+    "customEasyEnd": 0.15,
+    "customPressureEnd": 0.35,
+    "customReliefEnd": 0.5,
+    "customRescueAtSlots": 3,
+    "customDrainOrders": 2,
+    "customQueueReach": 3,
     "orders": [],
     "_id": "132CoMdDNPAqMOlPtJMQAJ"
   },
@@ -3909,7 +3915,7 @@
     "topBorder": null,
     "bubbleGap": 4,
     "spawnColumns": 48,
-    "maxBubblesOnScreen": 13,
+    "maxBubblesOnScreen": 15,
     "_id": "40aPZ/JzxBnL7ixRqwBoDP"
   },
   {
@@ -5789,8 +5795,8 @@
         "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 1,
-    "diffCurveType": 0,
+    "levelIndex": 0,
+    "diffCurveType": 4,
     "currentLevel": null,
     "orderManager": {
       "__id__": 65

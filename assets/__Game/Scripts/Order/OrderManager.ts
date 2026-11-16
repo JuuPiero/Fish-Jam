@@ -23,6 +23,24 @@ export class OrderManager extends Component {
     @property({ tooltip: 'Only applies when LevelManager.diffCurveType is not None - caps how many times in a row the same fish id can be (re)assigned to a freed order slot.' })
     maxSameOrderInARow: number = 2;
 
+    @property({ tooltip: 'Custom curve: end of the easy stretch, as a share of the fish tapped (0-1).' })
+    customEasyEnd: number = 0.15;
+
+    @property({ tooltip: 'Custom curve: end of the first pressure stretch, as a share of the fish tapped (0-1).' })
+    customPressureEnd: number = 0.35;
+
+    @property({ tooltip: 'Custom curve: end of the relief stretch; from here to the end the pressure rises and the player may lose.' })
+    customReliefEnd: number = 0.5;
+
+    @property({ tooltip: 'Custom curve, first pressure stretch: the one automatic rescue fires when this many wait slots are taken.' })
+    customRescueAtSlots: number = 3;
+
+    @property({ tooltip: 'Custom curve: how many easy, slot-draining orders follow the rescue.' })
+    customDrainOrders: number = 2;
+
+    @property({ tooltip: 'Custom curve, late stretch: an order may only need fish from this many of the next bubbles to spawn, so it never waits on a fish buried far down the queue.' })
+    customQueueReach: number = 3;
+
     @property({type: [Order], readonly: true}) orders: Order[] = []
 
     // Match-3: an order is fulfilled by delivering this many fish of the same id (matches the
@@ -51,6 +69,35 @@ export class OrderManager extends Component {
     private _slotManager: SlotManager | null = null;
     private _diffCurveType: DiffCurveType = DiffCurveType.None;
 
+    // --- DiffCurveType.Custom: progress is the share of the level's fish the player has tapped. ---
+    private _totalFish = 0;
+    private _tappedFish = 0;
+    private _rescueUsed = false;
+    private _drainOrdersLeft = 0;
+
+    protected onEnable(): void {
+        EventBus.on(GameEvents.FISH_CLICKED, this.onFishTapped);
+    }
+
+    protected onDisable(): void {
+        EventBus.off(GameEvents.FISH_CLICKED, this.onFishTapped);
+    }
+
+    private onFishTapped = (): void => {
+        this._tappedFish++;
+    };
+
+    // Custom curve, first pressure stretch: the rescue fires once, the first time the wait slots
+    // fill up to customRescueAtSlots.
+    update(): void {
+        if (this._diffCurveType !== DiffCurveType.Custom || this._rescueUsed || this.customPhase() !== 1) {
+            return;
+        }
+        if ((this._slotManager?.getOccupiedCount() ?? 0) >= this.customRescueAtSlots) {
+            this.rescue();
+        }
+    }
+
     // Tracks each order's own in-flight relayout slide, if any, so a new one can stop just that
     // tween - Order's own node also carries its pop-in scale/shake tweens, and Tween.stopAllByTarget
     // would wrongly cancel those too if a relayout happens to land while one is still playing.
@@ -67,6 +114,10 @@ export class OrderManager extends Component {
         this._bubbleManager = bubbleManager ?? null;
         this._slotManager = slotManager ?? null;
         this._diffCurveType = diffCurveType;
+        this._totalFish = levelData.getTotalFishes();
+        this._tappedFish = 0;
+        this._rescueUsed = false;
+        this._drainOrdersLeft = 0;
 
         const orderPrefab = ServiceLocator.get(GameConfigSA).orderPrefab;
 
@@ -191,6 +242,9 @@ export class OrderManager extends Component {
             const requiredCount = this.reserveOrderFish(nextId);
             order.reset(nextId, requiredCount);
             this.recordCreatedOrder(nextId);
+            if (this._diffCurveType === DiffCurveType.Custom && this.customPhase() === 2) {
+                this.promoteNeededBubbles();
+            }
             return nextId;
         }
 
@@ -290,7 +344,7 @@ export class OrderManager extends Component {
         // intentional part of the added challenge.
         const withinRunLimit = (id: number) =>
             id !== this._lastCreatedId || this._sameOrderRun < this.maxSameOrderInARow;
-        const dedupeRules = this._diffCurveType === DiffCurveType.Easy
+        const dedupeRules = this.picksEasily()
             ? [notAlreadyOpen]
             : [withinRunLimit, notAlreadyOpen];
         const idPool = this.filterByPriority(ids, dedupeRules);
@@ -307,10 +361,22 @@ export class OrderManager extends Component {
         // fish types were being favored or ignored outright rather than the tier's difficulty rule
         // actually doing the work - rolling among the tie lets the same level play out differently
         // from one attempt to the next.
-        if (this._diffCurveType === DiffCurveType.Easy) {
+        if (this.picksEasily()) {
             return candidates[0];
         }
         return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // Easy, and the custom curve's easy, relief and draining picks: no run limit, no random tie roll.
+    private picksEasily(): boolean {
+        if (this._diffCurveType === DiffCurveType.Easy) {
+            return true;
+        }
+        if (this._diffCurveType !== DiffCurveType.Custom) {
+            return false;
+        }
+        const phase = this.customPhase();
+        return this._drainOrdersLeft > 0 || phase === 0 || phase === 2;
     }
 
     // The actual difficulty knob: how much a candidate id is required to already be reachable -
@@ -342,6 +408,9 @@ export class OrderManager extends Component {
     //   or however many the order even needs if it needs fewer), without chasing the outright
     //   maximum the way Normal/Easy do.
     private filterByReachability(ids: number[], excluding: Order | null): number[] {
+        if (this._diffCurveType === DiffCurveType.Custom) {
+            return this.filterCustom(ids, excluding);
+        }
         const reachableCounts = this.collectReachableCounts(excluding);
         const reachable = ids.filter(id => (reachableCounts.get(id) ?? 0) > 0);
         if (reachable.length === 0) {
@@ -366,6 +435,169 @@ export class OrderManager extends Component {
 
         const instantWin = reachable.filter(id => (this._bubbleManager?.getMaxFishInSingleBubble(id) ?? 0) >= requiredFor(id));
         return instantWin.length > 0 ? instantWin : maxReachableAmong(reachable);
+    }
+
+    // 0: easy (to customEasyEnd), 1: pressure (to customPressureEnd), 2: relief (to customReliefEnd),
+    // 3: rising pressure to the end. By the share of fish tapped, never by time.
+    private customPhase(): number {
+        const progress = this._totalFish > 0 ? this._tappedFish / this._totalFish : 0;
+        if (progress < this.customEasyEnd) {
+            return 0;
+        }
+        if (progress < this.customPressureEnd) {
+            return 1;
+        }
+        return progress < this.customReliefEnd ? 2 : 3;
+    }
+
+    // The custom curve's pick, by phase. Every branch falls back to something non-empty, so it
+    // never refuses to spawn an order.
+    // - Drain (the orders after the rescue, the easy phase, the relief phase): ids with fish on
+    //   the wait slots first, most of them first, so a finished order empties slots; otherwise the
+    //   Easy pick (a bubble that finishes it alone, else the most fish on the board).
+    // - Pressure: an id with some fish on the board but not enough, the rest still in bubbles that
+    //   have not spawned, so the order sits half done and the slots fill while the player waits.
+    // - Late: the same kind of short order, but only if the missing fish are in the next
+    //   customQueueReach bubbles to spawn; failing that the fewest fish on the board that still
+    //   completes. The player can lose, but never to an order that waits on a fish far down.
+    private filterCustom(ids: number[], excluding: Order | null): number[] {
+        const reach = this.collectReachableCounts(excluding);
+        const requiredFor = (id: number) => Math.min(OrderManager.FISH_PER_ORDER, this._pendingCounts.get(id) ?? 0);
+        const reachOf = (id: number) => reach.get(id) ?? 0;
+        const reachable = ids.filter(id => reachOf(id) > 0);
+        const pool = reachable.length > 0 ? reachable : ids;
+
+        const easy = (): number[] => {
+            const instantWin = pool.filter(id => (this._bubbleManager?.getMaxFishInSingleBubble(id) ?? 0) >= requiredFor(id));
+            if (instantWin.length > 0) {
+                return instantWin;
+            }
+            const max = Math.max(...pool.map(reachOf));
+            return pool.filter(id => reachOf(id) === max);
+        };
+        const drain = (): number[] => {
+            const bench = new Map<number, number>();
+            this._slotManager?.collectWaitingFishCounts(bench);
+            const onBench = ids.filter(id => (bench.get(id) ?? 0) > 0);
+            if (onBench.length === 0) {
+                return easy();
+            }
+            const max = Math.max(...onBench.map(id => bench.get(id) ?? 0));
+            return onBench.filter(id => (bench.get(id) ?? 0) === max);
+        };
+
+        const phase = this.customPhase();
+        if (this._drainOrdersLeft > 0) {
+            this._drainOrdersLeft--;
+            return drain();
+        }
+        if (phase === 0 || phase === 2) {
+            return drain();
+        }
+
+        const queued = new Map<number, number>();
+        this._bubbleManager?.collectQueuedFishCounts(queued, phase === 3 ? this.customQueueReach : Number.POSITIVE_INFINITY);
+        const short = reachable.filter(id =>
+            reachOf(id) < requiredFor(id) && reachOf(id) + (queued.get(id) ?? 0) >= requiredFor(id));
+        if (short.length > 0) {
+            return short;
+        }
+        if (phase === 1) {
+            return pool;
+        }
+        const completes = reachable.filter(id => reachOf(id) >= requiredFor(id));
+        if (completes.length === 0) {
+            return easy();
+        }
+        const min = Math.min(...completes.map(reachOf));
+        return completes.filter(id => reachOf(id) === min);
+    }
+
+    // Relief phase and after a rescue: the queued bubbles holding fish an open order still lacks
+    // move to the front of the spawn queue.
+    private promoteNeededBubbles(): void {
+        if (!this._bubbleManager) {
+            return;
+        }
+        const reach = this.collectReachableCounts();
+        const needed = new Set<number>();
+        for (const order of this.orders) {
+            if (order.node.active && (reach.get(order.id) ?? 0) < 0) {
+                needed.add(order.id);
+            }
+        }
+        this._bubbleManager.promoteQueuedBubblesWith(needed);
+    }
+
+    // Gives an order a new id: the fish reserved for its old id go back to the pool first. Only
+    // ever called on an order no fish has been sent to, so nothing is lost.
+    private replaceOrderId(order: Order, nextId: number): void {
+        if (order.requiredCount > 0) {
+            this._pendingCounts.set(order.id, (this._pendingCounts.get(order.id) ?? 0) + order.requiredCount);
+        }
+        const requiredCount = this.reserveOrderFish(nextId);
+        order.reset(nextId, requiredCount);
+        this.recordCreatedOrder(nextId);
+    }
+
+    private isUntouched(order: Order): boolean {
+        return order.node.active && order.claimedCount === 0 && !order.isBusy;
+    }
+
+    // The custom curve's one automatic rescue: each order nothing has been sent to yet, while some
+    // fish on the wait slots has no order, is switched to the slot fish with the most copies
+    // there (its pop-in pulls them off the slots); then the next customDrainOrders orders drain.
+    private rescue(): void {
+        this._rescueUsed = true;
+        const bench = new Map<number, number>();
+        this._slotManager?.collectWaitingFishCounts(bench);
+        for (const order of this.orders) {
+            const uncovered = Array.from(bench.keys())
+                .filter(id => !this.orders.some(other => other.node.active && other.id === id))
+                .sort((a, b) => (bench.get(b) ?? 0) - (bench.get(a) ?? 0));
+            if (uncovered.length === 0) {
+                break;
+            }
+            if (!this.isUntouched(order) || bench.has(order.id)) {
+                continue;
+            }
+            const nextId = uncovered.find(id => (this._pendingCounts.get(id) ?? 0) > 0);
+            if (nextId === undefined) {
+                break;
+            }
+            this.replaceOrderId(order, nextId);
+        }
+        this._drainOrdersLeft = this.customDrainOrders;
+        this.promoteNeededBubbles();
+    }
+
+    // Anti-stuck, asked by GameManager before it ends a stuck game. Custom curve before its last
+    // stretch only (from customReliefEnd the player may lose): each order nothing has been sent to
+    // whose fish the player cannot see is switched to the visible fish with the most copies.
+    // Orders already filling up keep their id. True when something changed.
+    tryUnstick(visibleCounts: Map<number, number>): boolean {
+        if (this._diffCurveType !== DiffCurveType.Custom || this.customPhase() === 3) {
+            return false;
+        }
+        let changed = false;
+        for (const order of this.orders) {
+            if (!this.isUntouched(order) || (visibleCounts.get(order.id) ?? 0) > 0) {
+                continue;
+            }
+            const candidates = Array.from(visibleCounts.keys())
+                .filter(id => (this._pendingCounts.get(id) ?? 0) > 0 || id === order.id)
+                .filter(id => !this.orders.some(other => other !== order && other.node.active && other.id === id))
+                .sort((a, b) => (visibleCounts.get(b) ?? 0) - (visibleCounts.get(a) ?? 0));
+            if (candidates.length === 0) {
+                continue;
+            }
+            this.replaceOrderId(order, candidates[0]);
+            changed = true;
+        }
+        if (changed) {
+            this.promoteNeededBubbles();
+        }
+        return changed;
     }
 
     private createOrder(orderPrefab: Prefab): boolean {

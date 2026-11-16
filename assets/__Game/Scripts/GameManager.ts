@@ -264,6 +264,11 @@ export class GameManager extends Component {
             order.remainingCount > 0 && (fishCounts.get(order.id) ?? 0) > 0,
         );
         if (!hasVisibleMatch) {
+            // The custom curve forbids a loss before its last stretch: it swaps the untouched
+            // orders onto visible fish instead, and the next check sees the new orders.
+            if (orderManager.tryUnstick(fishCounts)) {
+                return;
+            }
             // In a real playable this immediately invokes the platform CTA. The lose event also
             // keeps the game state and end-card UI in sync when running in the Cocos preview.
             PlayableAdsManager.OpenStore();
