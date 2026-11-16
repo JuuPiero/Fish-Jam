@@ -458,20 +458,6 @@
     "fishes": [],
     "unitPx": 82,
     "fishScale": 0.9,
-    "bubbleScales": [
-      1.8,
-      1.8,
-      1.8,
-      1.8,
-      2.15
-    ],
-    "itemDistances": [
-      1.4,
-      1.4,
-      1.4,
-      1.4,
-      1.2
-    ],
     "bounceSpeedThreshold": 5,
     "bounceMaxSpeed": 140,
     "bounceSquashMin": 0.1,

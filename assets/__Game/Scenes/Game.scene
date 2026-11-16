@@ -736,7 +736,7 @@
     "_lpos": {
       "__type__": "cc.Vec3",
       "x": 0,
-      "y": 319.456,
+      "y": 356.113,
       "z": 0
     },
     "_lrot": {
@@ -5780,9 +5780,13 @@
       {
         "__uuid__": "22fc1461-4142-4864-8bb6-8022bfa8e107",
         "__expectedType__": "cc.JsonAsset"
+      },
+      {
+        "__uuid__": "ef9cd231-41db-4409-810b-ab4b12fd9d61",
+        "__expectedType__": "cc.JsonAsset"
       }
     ],
-    "levelIndex": 0,
+    "levelIndex": 1,
     "diffCurveType": 0,
     "currentLevel": null,
     "orderManager": {
@@ -6394,6 +6398,20 @@
       "x": 0,
       "y": 683.517
     },
+    "bubbleScales": [
+      1,
+      1.7,
+      1.8,
+      1.9,
+      2.15
+    ],
+    "itemDistances": [
+      1.4,
+      1.4,
+      1.4,
+      1.4,
+      1.2
+    ],
     "_id": "bbr33oiUNEpZOEYHq6X8V5"
   },
   {

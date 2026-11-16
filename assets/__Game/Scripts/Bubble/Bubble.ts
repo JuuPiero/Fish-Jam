@@ -7,6 +7,7 @@ import { AudioManager } from 'db://assets/_iKame/Scripts/Audio/AudioManager';
 import { VFXManager } from '../VFXManager';
 import { EventBus } from 'db://assets/_iKame/Scripts/EventBus';
 import { GameEvents } from '../GameEvents';
+import { PlayableController } from '../PlayableController';
 const { ccclass, property } = _decorator;
 
 @ccclass('Bubble')
@@ -32,11 +33,8 @@ export class Bubble extends Component {
     @property({ tooltip: "Visual scale of a fish inside a bubble. Unity's own would be 0.95 x unitPx / 100 = 0.78; raised to 0.9, which read better here." })
     fishScale: number = 0.9;
 
-    @property({type: [CCFloat], tooltip: "Unity's bubbleScales: bubble radius in Unity units for 1, 2, 3, 4, 5+ fish (the collider radius is 1)." })
-    bubbleScales: number[] = [1, 1.25, 1.5, 1.8, 2.15];
-
-    @property({type: [CCFloat], tooltip: "Distance in Unity units between neighbouring fish, by the bubble's spawn fish count. Unity's itemDistances are 0.75 (0.68 for 5); widened here to go with the larger fishScale, still inside each bubble's radius." })
-    itemDistances: number[] = [1.5, 1.5, 1.5, 1.5, 1.2];
+    // bubbleScales (radius by fish count) and itemDistances (neighbour distance by fish count),
+    // both in Unity units, live on PlayableController so they can be tuned in one place.
 
     // Fixed at spawn, like Unity: the bubble keeps its size as fish leave, and the ring of the
     // remaining fish closes in with the same neighbour distance.
@@ -142,8 +140,9 @@ export class Bubble extends Component {
             return;
         }
 
-        const bubbleRadius = this.sizeEntry(this.bubbleScales, count, 1) * this.unitPx;
-        this._itemDistancePx = this.sizeEntry(this.itemDistances, count, 0.75) * this.unitPx;
+        const playable = ServiceLocator.get(PlayableController);
+        const bubbleRadius = this.sizeEntry(playable.bubbleScales, count, 1) * this.unitPx;
+        this._itemDistancePx = this.sizeEntry(playable.itemDistances, count, 0.75) * this.unitPx;
         this.positionFishesInCircle(false);
 
         this.radius = bubbleRadius;
