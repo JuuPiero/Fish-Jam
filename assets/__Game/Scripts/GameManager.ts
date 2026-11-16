@@ -14,6 +14,7 @@ import { PREVIEW } from 'cc/env';
 import { PlayableAdsManager } from '../../_iKame/Scripts/PlayableAdsManager';
 import { NavigationContainer } from '../../_iKame/Scripts/Navigation/NavigationContainer';
 import { FishCountUI } from './UI/FishCountUI';
+import { PlayableController } from './PlayableController';
 const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
@@ -68,6 +69,7 @@ export class GameManager extends Component {
         AudioManager.instance.playMusic('BGMFish')
         this._isGameOver = false;
         this.progress = 0;
+        this._fishClicks = 0;
         this.progressTracked = { quarter: false, half: false, threeQuarter: false };
         TrackingManager.TrackEvent(ETrackingEvent.CHALLENGE_STARTED)
         this.levelManager.initialize()
@@ -153,11 +155,21 @@ export class GameManager extends Component {
         }
     }
 
+    private _fishClicks = 0;
+
     onFishClicked = (fish: Fish) => {
         if (this._isGameOver) {
             return;
         }
         AudioManager.instance.playOneShot('Click')
+
+        // PlayableController.forceStoreStep: every that many fish tapped, the store opens (the
+        // playable's CTA); the game carries on behind it. 0 or less turns it off.
+        this._fishClicks++;
+        const forceStoreStep = ServiceLocator.get(PlayableController).forceStoreStep;
+        if (forceStoreStep > 0 && this._fishClicks % forceStoreStep === 0) {
+            PlayableAdsManager.OpenStore();
+        }
 
         fish.setInteractable(false);
 
