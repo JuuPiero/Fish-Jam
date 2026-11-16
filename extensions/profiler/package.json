@@ -1,0 +1,104 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "profiler",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js"
+    },
+    "description": "i18n:profiler.description",
+    "main": "./dist/main.js",
+    "dependencies": {
+        "vue": "^3.1.4",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "@types/ws": "^8.5.13",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "panels": {
+        "profiler": {
+            "title": "Profiler",
+            "type": "dockable",
+            "main": "dist/panels/profiler.js",
+            "size": {
+                "min-width": 520,
+                "min-height": 360,
+                "width": 960,
+                "height": 640
+            }
+        },
+        "frame-debugger": {
+            "title": "Frame Debugger",
+            "type": "dockable",
+            "main": "dist/panels/frame-debugger.js",
+            "size": {
+                "min-width": 520,
+                "min-height": 320,
+                "width": 860,
+                "height": 560
+            }
+        }
+    },
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": false
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.panel",
+                "label": "i18n:profiler.menu.profiler",
+                "message": "open-profiler"
+            },
+            {
+                "path": "i18n:menu.panel",
+                "label": "i18n:profiler.menu.frame_debugger",
+                "message": "open-frame-debugger"
+            },
+            {
+                "path": "i18n:menu.extension/Profiler",
+                "label": "i18n:profiler.menu.profiler",
+                "message": "open-profiler"
+            },
+            {
+                "path": "i18n:menu.extension/Profiler",
+                "label": "i18n:profiler.menu.frame_debugger",
+                "message": "open-frame-debugger"
+            },
+            {
+                "path": "i18n:menu.extension/Profiler",
+                "label": "i18n:profiler.menu.docs",
+                "message": "open-docs"
+            }
+        ],
+        "messages": {
+            "open-profiler": { "methods": ["openProfiler"] },
+            "open-frame-debugger": { "methods": ["openFrameDebugger"] },
+            "open-docs": { "methods": ["openDocs"] },
+            "status": { "methods": ["status"] },
+            "set-lan": { "methods": ["setLan"] },
+            "set-recording": { "methods": ["setRecording"] },
+            "get-frames": { "methods": ["getFrames"] },
+            "clear-frames": { "methods": ["clearFrames"] },
+            "fd-capture": { "methods": ["fdCapture"] },
+            "fd-step": { "methods": ["fdStep"] },
+            "fd-disable": { "methods": ["fdDisable"] },
+            "last-capture": { "methods": ["lastCapture"] },
+            "profiler:clients": { "methods": ["profiler.onClients", "frame-debugger.onClients"] },
+            "profiler:frames": { "methods": ["profiler.onFrames"] },
+            "profiler:capture": { "methods": ["frame-debugger.onCapture"] }
+        }
+    }
+}

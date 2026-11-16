@@ -24,6 +24,9 @@ export class OrderManager extends Component {
     @property({ tooltip: 'Speed in units/second at which the orders behind a removed one slide up to close its gap.' })
     compactSpeed: number = 600;
 
+    @property({ tooltip: 'The belt never gets shorter than this many cells: with this many orders or fewer left, it stops shrinking and the orders run round a loop this long, with empty cells.' })
+    minBeltOrders: number = 4;
+
     @property({ tooltip: "Left edge of the area where orders take fish, in OrderContainer local X. Follows the screen's left edge at runtime (resize, rotation); this value is only the fallback when the Canvas camera cannot be read." })
     interactableLeft: number = -559.186;
 
@@ -218,7 +221,7 @@ export class OrderManager extends Component {
                 count++;
             }
         }
-        return count * this.spacing;
+        return Math.max(count, this.minBeltOrders) * this.spacing;
     }
 
     // Where the loop starts. While the orders fit on screen (few left, or a wide landscape screen)
@@ -289,7 +292,10 @@ export class OrderManager extends Component {
                 const rightmostX = Math.max(...this.orders
                     .filter(candidate => candidate !== order && candidate.node.active)
                     .map(candidate => candidate.node.position.x - (this._compactShift.get(candidate) ?? 0)));
-                x = Number.isFinite(rightmostX) ? rightmostX + this.spacing : left + this.spacing * 0.5;
+                // With fewer orders than minBeltOrders the loop has empty cells, so an order comes
+                // back no nearer than the loop's last cell.
+                const loopEnd = left + this.beltLength() - this.spacing * 0.5;
+                x = Number.isFinite(rightmostX) ? Math.max(rightmostX + this.spacing, loopEnd) : loopEnd;
                 this._compactShift.delete(order);
             }
             order.node.setPosition(x, position.y, position.z);
