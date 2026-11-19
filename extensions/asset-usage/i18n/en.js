@@ -1,0 +1,1 @@
+"use strict";module.exports={open_panel:"Asset Usage",find_unused:"Find Unused Assets",find_missing:"Find Missing References",description:"Find References, Dependencies, Unused Assets and Missing References, like Unity's Find References In Project / Scene."};
