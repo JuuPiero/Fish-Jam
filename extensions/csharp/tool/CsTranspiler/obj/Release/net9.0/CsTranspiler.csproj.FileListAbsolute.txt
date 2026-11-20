@@ -1,0 +1,17 @@
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\bin\CsTranspiler.exe
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\bin\CsTranspiler.deps.json
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\bin\CsTranspiler.runtimeconfig.json
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\bin\CsTranspiler.dll
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\bin\CsTranspiler.pdb
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.csproj.AssemblyReference.cache
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.GeneratedMSBuildEditorConfig.editorconfig
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.AssemblyInfoInputs.cache
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.AssemblyInfo.cs
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.csproj.CoreCompileInputs.cache
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.sourcelink.json
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTransp.5C27432B.Up2Date
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.dll
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\refint\CsTranspiler.dll
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.pdb
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\CsTranspiler.genruntimeconfig.cache
+D:\Workspace\Cocos\Cocos-Goat\extensions\csharp\tool\CsTranspiler\obj\Release\net9.0\ref\CsTranspiler.dll

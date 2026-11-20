@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "dgSpecHash": "MMb2hQ5A56g=",
+  "success": true,
+  "projectFilePath": "D:\\Workspace\\Cocos\\Fish-Jam\\extensions\\csharp\\tool\\CsTranspiler\\CsTranspiler.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.3.4\\microsoft.codeanalysis.analyzers.3.3.4.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.codeanalysis.common\\4.11.0\\microsoft.codeanalysis.common.4.11.0.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.codeanalysis.csharp\\4.11.0\\microsoft.codeanalysis.csharp.4.11.0.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\system.collections.immutable\\8.0.0\\system.collections.immutable.8.0.0.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\system.reflection.metadata\\8.0.0\\system.reflection.metadata.8.0.0.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.23\\microsoft.netcore.app.ref.9.0.23.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.23\\microsoft.windowsdesktop.app.ref.9.0.23.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\9.0.23\\microsoft.aspnetcore.app.ref.9.0.23.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\9.0.23\\microsoft.netcore.app.host.win-x64.9.0.23.nupkg.sha512"
+  ],
+  "logs": []
+}

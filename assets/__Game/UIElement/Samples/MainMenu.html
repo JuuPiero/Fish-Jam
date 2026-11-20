@@ -1,0 +1,38 @@
+<!--
+    HTML fragment rendered by UIDocument (no <html>/<body> needed, <script> is not executed).
+    - picking-mode="ignore"  : the element lets touches through to the game
+    - data-bind / data-show / data-class : reactive bindings (see UIBinding.ts)
+    - data-action="x"        : doc.onAction('x', ...) / node event 'ui-action'
+    - asset(key)             : image registered in the UIDocument "assets" list, e.g. <img src="asset(coin)">
+-->
+<div class="screen" picking-mode="ignore">
+    <div class="hud" picking-mode="ignore">
+        <div class="pill"><span class="coin"></span><span data-bind="coins"></span></div>
+        <div class="pill">Level <span data-bind="level"></span></div>
+    </div>
+
+    <div class="panel" data-show="!playing">
+        <h1 class="title">Light Test</h1>
+
+        <input class="name-input" data-bind="playerName" placeholder="Your name" maxlength="16">
+        <p class="greet">Hello, <b data-bind="playerName"></b>!</p>
+
+        <ul class="shop" id="shop-list"></ul>
+
+        <label class="toggle">
+            <input type="checkbox" data-bind="sound">
+            <span>Sound</span>
+        </label>
+
+        <button class="btn btn-primary" data-action="play">PLAY</button>
+    </div>
+
+    <button class="btn btn-pause" data-action="pause" data-show="playing">❚❚</button>
+
+    <template id="shop-item">
+        <li class="shop-item">
+            <span class="shop-name"></span>
+            <button class="btn btn-buy">Buy</button>
+        </li>
+    </template>
+</div>

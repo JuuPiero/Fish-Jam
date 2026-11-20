@@ -26,6 +26,9 @@ export class BubbleManager extends Component {
     @property(Node) leftBorder: Node = null;
     @property(Node) rightBorder: Node = null;
 
+    @property({ tooltip: 'Optional ceiling border. If empty, the sibling node named TopBorder is used.' })
+    topBorder: Node = null;
+
     @property({ tooltip: 'Minimum free space between bubbles while arranging the opening batch.' })
     bubbleGap: number = 20;
 
@@ -229,12 +232,13 @@ export class BubbleManager extends Component {
         }
     }
 
-    // Packs the opening batch from SpawnPos downwards (SpawnPos sits at the bottom of the screen):
-    // each bubble lands as high as it can in whichever lane the already-planned ones leave the most
-    // room. The whole pack starts below the screen and buoyancy floats it up into the tank, keeping
-    // the same tidy arrangement it would have had if placed against the ceiling.
+    // Packs the opening batch from the top down: each bubble lands as high as it can in
+    // whichever lane the already-planned bubbles leave the most room. Unlike the queue refill
+    // (which still starts below SpawnPos and floats up via buoyancy), the opening batch is
+    // placed directly inside the visible play zone, so it appears already settled instead of
+    // rising up from below the screen.
     private planBubbles(pendings: PendingBubble[]): PlannedBubble[] {
-        const top = this.spawnPosNode.worldPosition.y;
+        const top = this.getTopBorderY();
         const planned: PlannedBubble[] = [];
 
         for (const pending of pendings) {
@@ -292,6 +296,13 @@ export class BubbleManager extends Component {
         pending.node.setParent(this.node);
         pending.node.setWorldPosition(x, y, this.spawnPosNode.worldPosition.z);
         pending.node.active = true;
+    }
+
+    private getTopBorderY(): number {
+        const topBorder = this.topBorder ?? this.leftBorder.parent?.getChildByName('TopBorder');
+        // Game.scene already has TopBorder beside LeftBorder/RightBorder. The fallback keeps
+        // other scenes working until their optional Inspector reference is assigned.
+        return topBorder ? topBorder.worldPosition.y : this.spawnPosNode.worldPosition.y + 1200;
     }
 }
 

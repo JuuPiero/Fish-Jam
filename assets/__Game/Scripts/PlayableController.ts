@@ -46,8 +46,8 @@ export class PlayableController extends Component {
     }
 
     start() {
-        this.bgNode.setPosition(new Vec3(this.bgPosition.x, this.bgPosition.y, 1));
-        this.bgNode.setScale(new Vec3(this.bgtScale.x, this.bgtScale.y, 1));
+        // this.bgNode.setPosition(new Vec3(this.bgPosition.x, this.bgPosition.y, 1));
+        // this.bgNode.setScale(new Vec3(this.bgtScale.x, this.bgtScale.y, 1));
         this.lightNode.setScale(new Vec3(this.lightScale.x, this.lightScale.y, 1));
 
         this.slotManager.setPosition(new Vec3(this.slotPosition.x, this.slotPosition.y, 1));

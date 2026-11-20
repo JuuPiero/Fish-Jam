@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "cSCdWGn6fVo=",
+  "success": true,
+  "projectFilePath": "D:\\Workspace\\Cocos\\Fish-Jam\\extensions\\csharp\\tool\\Cocos.Bindings\\Cocos.Bindings.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.23\\microsoft.netcore.app.ref.9.0.23.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.23\\microsoft.windowsdesktop.app.ref.9.0.23.nupkg.sha512",
+    "C:\\Users\\thanhhh\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\9.0.23\\microsoft.aspnetcore.app.ref.9.0.23.nupkg.sha512"
+  ],
+  "logs": []
+}

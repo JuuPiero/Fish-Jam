@@ -1,0 +1,106 @@
+<!-- Lightweight snow overlay for UIDocument. -->
+<style>
+.snow-root {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+.snow-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* UIDocument enables pointer events on every descendant by default. */
+.snow-root,
+.snow-root * {
+    pointer-events: none !important;
+}
+</style>
+
+<div class="snow-root" picking-mode="ignore">
+    <canvas class="snow-canvas"></canvas>
+    <script>
+    const canvas = el.querySelector('.snow-canvas');
+    const ctx = canvas.getContext('2d');
+    const CFG = {
+        count: 24,
+        minR: 3,
+        maxR: 14,
+        minSpeed: 35,
+        maxSpeed: 75,
+        wind: 10,
+        alpha: [0.45, 0.85],
+        fps: 45,
+    };
+
+    let W = 0;
+    let H = 0;
+    let windPhase = 0;
+    let renderTime = 0;
+    const flakes = [];
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+
+    function resize() {
+        W = canvas.offsetWidth || canvas.parentElement.offsetWidth || 720;
+        H = canvas.offsetHeight || canvas.parentElement.offsetHeight || 1280;
+        // Render at CSS resolution to keep the full-screen canvas inexpensive.
+        canvas.width = W;
+        canvas.height = H;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    function makeFlake(randomY) {
+        return {
+            x: rand(0, W),
+            y: randomY ? rand(0, H) : rand(-20, -4),
+            r: rand(CFG.minR, CFG.maxR),
+            speed: rand(CFG.minSpeed, CFG.maxSpeed),
+            alpha: rand(CFG.alpha[0], CFG.alpha[1]),
+            drift: rand(-12, 12),
+        };
+    }
+
+    resize();
+    for (let i = 0; i < CFG.count; i++) flakes.push(makeFlake(true));
+
+    const onResize = () => resize();
+    window.addEventListener('resize', onResize);
+    onDispose(() => window.removeEventListener('resize', onResize));
+
+    loop(dt => {
+        // Keep the animation at 30 FPS even when the game runs at 60/120 FPS.
+        renderTime += dt;
+        if (renderTime < 1 / CFG.fps) return;
+        dt = renderTime;
+        renderTime = 0;
+
+        windPhase += dt;
+        const wind = Math.sin(windPhase) * CFG.wind;
+        ctx.clearRect(0, 0, W, H);
+
+        for (let i = 0; i < flakes.length; i++) {
+            let f = flakes[i];
+            f.x += (wind + f.drift) * dt;
+            f.y += f.speed * dt;
+
+            if (f.y > H + f.r) {
+                f = flakes[i] = makeFlake(false);
+                f.x = rand(0, W);
+            } else if (f.x < -f.r) {
+                f.x = W + f.r;
+            } else if (f.x > W + f.r) {
+                f.x = -f.r;
+            }
+
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,255,${f.alpha})`;
+            ctx.fill();
+        }
+    });
+    </script>
+</div>

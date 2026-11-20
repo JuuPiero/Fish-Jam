@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "Cocos.Bindings/1.0.0": {
+        "runtime": {
+          "Cocos.Bindings.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Cocos.Bindings/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

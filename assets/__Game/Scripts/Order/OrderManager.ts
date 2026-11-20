@@ -273,9 +273,11 @@ export class OrderManager extends Component {
             if (!order.node.active) {
                 continue;
             }
+            // Shift can be negative (still owes a rightward nudge - see removeFromBelt's anchor
+            // correction below), not just the usual positive "still owes moving further left".
             const shift = this._compactShift.get(order) ?? 0;
-            const step = Math.min(shift, compactStep);
-            if (shift - step <= 0) {
+            const step = Math.sign(shift) * Math.min(Math.abs(shift), compactStep);
+            if (shift - step === 0) {
                 this._compactShift.delete(order);
             } else {
                 this._compactShift.set(order, shift - step);
@@ -310,14 +312,27 @@ export class OrderManager extends Component {
 
     // Removes a finished order with no next id from the belt, and has every order behind it (to its
     // right, since the belt runs leftwards) slide one place up, so the belt stays one even row.
+    // Shrinking the belt can also move its own left anchor - beltLeft() re-centers while few
+    // orders remain - so every survivor absorbs that anchor shift too (it can be a rightward
+    // nudge, hence the signed shift in update()), on top of the usual one-cell close-up for
+    // whichever ones sat behind the order just removed. Skipping the anchor shift left every
+    // survivor sitting half a cell off from the recentered loop - which reads as a stray gap on
+    // screen, especially once a flurry of fast taps clears several orders in a row - until it
+    // happened to scroll all the way round to a wrap, which re-settles it for free.
     private removeFromBelt(order: Order, index: number): void {
         const removedX = order.node.position.x;
+        const leftBefore = this.beltLeft();
         this.orders.splice(index, 1);
         this._compactShift.delete(order);
         order.node.destroy();
+        const anchorShift = leftBefore - this.beltLeft();
         for (const other of this.orders) {
-            if (other.node.active && other.node.position.x > removedX) {
-                this._compactShift.set(other, (this._compactShift.get(other) ?? 0) + this.spacing);
+            if (!other.node.active) {
+                continue;
+            }
+            const shift = anchorShift + (other.node.position.x > removedX ? this.spacing : 0);
+            if (shift !== 0) {
+                this._compactShift.set(other, (this._compactShift.get(other) ?? 0) + shift);
             }
         }
     }

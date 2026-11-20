@@ -81,11 +81,12 @@ export class Fish extends Component {
         this._button.node.off(Node.EventType.MOUSE_LEAVE, this.onMouseLeave, this);
     }
     
+    @property([CCString]) names: string[] = [];
 
     initialize(id: number) {
         this.id = id;
-        // const runtimeData = this.fishAnim.skeletonData.getRuntimeData();
-        // const names = runtimeData.skins.map(s => s.name)
+        const runtimeData = this.spineAnim.skeletonData.getRuntimeData();
+         this.names = runtimeData.skins.map(s => s.name)
         // const match = ServiceLocator.get(FishConfigSA).fishes.match(/^sprite_(\d+)$/);
 
         // this.fishAnim.setSkin(ServiceLocator.get(FishConfigSA).getAnimationName(id));
