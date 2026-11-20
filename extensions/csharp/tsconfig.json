@@ -1,0 +1,28 @@
+{
+    "extends": "./base.tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        "target": "ES2020",
+        "lib": [
+            "ES2020",
+            "DOM"
+        ],
+        "types": [
+            "node",
+            "@cocos/creator-types/editor"
+        ]
+    },
+    "include": [
+        "source/**/*.ts",
+        "tests/**/*.ts",
+        "types/**/*.d.ts"
+    ],
+    "exclude": [
+        "tests/out",
+        "tests/golden",
+        "tests/errors",
+        "samples",
+        "assets"
+    ]
+}

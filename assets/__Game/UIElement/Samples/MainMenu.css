@@ -1,0 +1,158 @@
+.screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.hud {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    right: 24px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.coin {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff6a8, #f5b400 60%, #b87a00);
+}
+
+.panel {
+    width: 560px;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+    border-radius: 32px;
+    background: linear-gradient(180deg, #2b3a67 0%, #1b2340 100%);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    animation: pop-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.title {
+    margin: 0;
+    text-align: center;
+    font-size: 64px;
+    letter-spacing: 2px;
+    text-shadow: 0 4px 0 #0d1226;
+}
+
+.name-input {
+    padding: 14px 18px;
+    border: 2px solid #4a5c99;
+    border-radius: 14px;
+    background: #121a33;
+    color: #fff;
+    font-size: 28px;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.name-input:focus {
+    border-color: #7ea2ff;
+}
+
+.greet {
+    margin: 0;
+    text-align: center;
+    font-size: 24px;
+    color: #b8c4ea;
+}
+
+.shop {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.shop-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 10px 10px 18px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 24px;
+}
+
+.shop-item.owned .btn-buy {
+    background: #3d4a70;
+    box-shadow: none;
+}
+
+.toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 24px;
+}
+
+.toggle input {
+    width: 28px;
+    height: 28px;
+}
+
+.btn {
+    border: none;
+    border-radius: 16px;
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.08s ease-out, filter 0.08s;
+}
+
+.btn:active {
+    transform: scale(0.94);
+    filter: brightness(0.9);
+}
+
+.btn-primary {
+    padding: 20px;
+    font-size: 40px;
+    background: linear-gradient(180deg, #5fe07a, #25a846);
+    box-shadow: 0 6px 0 #17712d;
+}
+
+.btn-buy {
+    padding: 10px 22px;
+    font-size: 22px;
+    background: #f59e0b;
+    box-shadow: 0 4px 0 #a86606;
+}
+
+.btn-pause {
+    position: absolute;
+    top: 100px;
+    right: 24px;
+    width: 72px;
+    height: 72px;
+    font-size: 28px;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+@keyframes pop-in {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+}

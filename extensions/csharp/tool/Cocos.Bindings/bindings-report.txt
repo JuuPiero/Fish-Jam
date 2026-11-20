@@ -1,0 +1,5 @@
+Generated from C:\ProgramData\cocos\editors\Creator\3.8.6\resources\resources\3d\engine\bin\.declarations\cc.d.ts
+{"classes":976,"interfaces":509,"enums":298,"functions":267,"variables":318,"members":15603,"skipped":2}
+
+js.js: variable named like its namespace
+dragonBones.WorldClock.clock: member name used twice (static and instance, or property and method)

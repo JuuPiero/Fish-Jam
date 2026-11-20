@@ -1,0 +1,14 @@
+{
+    "package_version": 2,
+    "name": "fx-tween",
+    "version": "1.0.0",
+    "description": "Test fixture for the C# TS interop: an extension runtime mounted as db://fx-tween (not a real extension).",
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": true
+            }
+        }
+    }
+}

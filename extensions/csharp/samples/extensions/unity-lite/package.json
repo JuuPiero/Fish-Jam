@@ -1,0 +1,14 @@
+{
+    "package_version": 2,
+    "name": "unity-lite",
+    "version": "1.0.0",
+    "description": "Test fixture for the C# TS interop: unity-style's coroutines and decorators (byte-identical copies of core/coroutines.ts and engine/decorators.ts) and a reduced MonoBehaviour, mounted as db://unity-lite (not a real extension).",
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": true
+            }
+        }
+    }
+}

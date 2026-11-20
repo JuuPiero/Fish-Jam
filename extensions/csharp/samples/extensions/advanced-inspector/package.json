@@ -1,0 +1,14 @@
+{
+    "package_version": 2,
+    "name": "advanced-inspector",
+    "version": "1.0.0",
+    "description": "Test fixture for the C# TS interop: assets/AdvancedInspector.ts is a byte-identical copy of E:/Workspace/cocos/AdvanceInspector/extensions/advanced-inspector/assets/AdvancedInspector.ts (tests/samples.js checks it). Not a real extension.",
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": true
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Reference assembly of the Cocos API for C# scripts: IntelliSense in the IDE and the
+       semantic model of the transpiler. Cocos.g.cs is generated from cc.d.ts. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>cc</RootNamespace>
+    <AssemblyName>Cocos.Bindings</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS0108;CS0109;CS0114;CS0626;CS0824;CS8603;CS8625;CS1591;CS0693;CS0465</NoWarn>
+  </PropertyGroup>
+</Project>

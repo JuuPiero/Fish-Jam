@@ -1,0 +1,168 @@
+// Line Renderer: ribbons expanded in the vertex shader so they face the
+// camera (View alignment) or the node's Z axis (TransformZ). Unlit, tinted by
+// vertex color (the line's gradient), main color and an optional texture.
+CCEffect %{
+  techniques:
+  - name: alpha-blend
+    passes:
+    - vert: line-vs:vert
+      frag: line-fs:frag
+      rasterizerState: &r1 { cullMode: none }
+      depthStencilState: &d1
+        depthTest: true
+        depthWrite: false
+      blendState: &b1
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      properties: &props
+        mainTexture:  { value: white }
+        mainColor:    { value: [1, 1, 1, 1], linear: true, editor: { type: color } }
+        tilingOffset: { value: [1, 1, 0, 0] }
+    - &df1
+      vert: line-vs:vert
+      frag: line-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b1
+  - name: additive
+    passes:
+    - vert: line-vs:vert
+      frag: line-fs:frag
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: &b2
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one
+          blendSrcAlpha: src_alpha
+          blendDstAlpha: one
+      properties: *props
+    - vert: line-vs:vert
+      frag: line-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *r1
+      depthStencilState: *d1
+      blendState: *b2
+  - name: opaque
+    passes:
+    - vert: line-vs:vert
+      frag: line-fs:frag
+      rasterizerState: *r1
+      properties: *props
+    - vert: line-vs:vert
+      frag: line-fs:frag
+      phase: deferred-forward
+      propertyIndex: 0
+      rasterizerState: *r1
+}%
+
+CCProgram line-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/uniforms/cc-local>
+
+  in vec3 a_position;   // point on the line (local space)
+  in vec3 a_normal;     // line direction A (local space)
+  in vec4 a_tangent;    // xyz: line direction B, w: kind (0 edge, 1 corner, 2 center, 3 cap)
+  in vec2 a_texCoord;
+  in vec4 a_texCoord1;  // x: half width, y: side, z: fan 0..1, w: alignment (0 view, 1 transform Z)
+  in vec4 a_color;
+
+  out vec2 v_uv;
+  out vec4 v_color;
+
+  uniform TexCoords {
+    vec4 tilingOffset;
+  };
+
+  vec3 sideNormal (vec3 d, vec3 v) {
+    vec3 n = cross(d, v);
+    if (dot(n, n) < 1e-12) {
+      n = cross(d, abs(d.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
+    }
+    return normalize(n);
+  }
+
+  vec3 safeNormalize (vec3 d) {
+    float l = length(d);
+    return l > 1e-8 ? d / l : vec3(0.0, 0.0, 1.0);
+  }
+
+  vec4 vert () {
+    mat4 matWorld = cc_matWorld;
+    vec3 p = (matWorld * vec4(a_position, 1.0)).xyz;
+    vec3 ta = safeNormalize((matWorld * vec4(a_normal, 0.0)).xyz);
+    vec3 tb = safeNormalize((matWorld * vec4(a_tangent.xyz, 0.0)).xyz);
+
+    // The direction towards the viewer: the camera, or the node's Z axis.
+    vec3 v;
+    if (a_texCoord1.w > 0.5) {
+      v = safeNormalize((matWorld * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+    } else if (cc_matProj[3][3] > 0.5) {
+      // Orthographic: the camera's back axis.
+      v = normalize(vec3(cc_matView[0][2], cc_matView[1][2], cc_matView[2][2]));
+    } else {
+      v = safeNormalize(cc_cameraPos.xyz - p);
+    }
+
+    float kind = a_tangent.w;
+    float hw = a_texCoord1.x;
+    float side = a_texCoord1.y;
+    float fan = a_texCoord1.z;
+    vec3 offset = vec3(0.0);
+    if (kind < 0.5) {
+      offset = sideNormal(ta, v) * side * hw;
+    } else if (kind < 1.5) {
+      // Round join: from A's normal to B's normal on the outer side of the turn.
+      vec3 na = sideNormal(ta, v);
+      vec3 nb = sideNormal(tb, v);
+      float s = dot(cross(ta, tb), v) >= 0.0 ? 1.0 : -1.0;
+      float angle = atan(dot(cross(na, nb), v), dot(na, nb)) * fan;
+      vec3 r = na * cos(angle) + cross(v, na) * sin(angle);
+      offset = r * s * hw;
+    } else if (kind > 2.5) {
+      // Round cap: half circle around the end.
+      vec3 n = sideNormal(ta, v);
+      vec3 f = normalize(cross(v, n));
+      float a = fan * 3.14159265;
+      offset = (n * cos(a) + f * side * sin(a)) * hw;
+    }
+    p += offset;
+
+    v_uv = a_texCoord * tilingOffset.xy + tilingOffset.zw;
+    v_color = a_color;
+    return cc_matProj * (cc_matView * vec4(p, 1.0));
+  }
+}%
+
+CCProgram line-fs %{
+  precision highp float;
+  #include <legacy/output-standard>
+
+  in vec2 v_uv;
+  in vec4 v_color;
+
+  uniform sampler2D mainTexture;
+
+  uniform Constant {
+    vec4 mainColor;
+  };
+
+  vec4 frag () {
+    vec4 o = mainColor;
+    o.rgb *= SRGBToLinear(v_color.rgb);
+    o.a *= v_color.a;
+    vec4 tex = texture(mainTexture, v_uv);
+    tex.rgb = SRGBToLinear(tex.rgb);
+    o *= tex;
+    return CCFragOutput(o);
+  }
+}%

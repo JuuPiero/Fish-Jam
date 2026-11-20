@@ -1,0 +1,537 @@
+
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    color: #f5f5f5;
+
+    background:
+        radial-gradient(circle at 20% 20%, #4636ff33, transparent 30%),
+        radial-gradient(circle at 80% 70%, #00d4ff22, transparent 30%),
+        #09090b;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+/* -------------------------
+   APP
+------------------------- */
+
+.app {
+    width: min(1100px, calc(100% - 40px));
+    min-height: 650px;
+
+    display: grid;
+    grid-template-columns: 220px 1fr;
+
+    background: #ffffff08;
+
+    border: 1px solid #ffffff12;
+    border-radius: 24px;
+
+    box-shadow:
+        0 30px 100px #00000080,
+        inset 0 1px #ffffff12;
+
+    backdrop-filter: blur(30px);
+    overflow: hidden;
+}
+
+
+/* -------------------------
+   SIDEBAR
+------------------------- */
+
+.sidebar {
+    padding: 24px;
+
+    border-right: 1px solid #ffffff0d;
+
+    background: #ffffff03;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    margin-bottom: 40px;
+
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.logo-icon {
+    width: 34px;
+    height: 34px;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 10px;
+
+    background: linear-gradient(
+        135deg,
+        #7c5cff,
+        #4d9cff
+    );
+
+    box-shadow: 0 8px 30px #6655ff55;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nav a {
+    padding: 11px 12px;
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    border-radius: 10px;
+
+    color: #a1a1aa;
+    text-decoration: none;
+
+    transition:
+        background .2s,
+        color .2s,
+        transform .2s;
+}
+
+.nav a:hover {
+    color: white;
+    background: #ffffff0c;
+    transform: translateX(3px);
+}
+
+.nav a.active {
+    color: white;
+
+    background:
+        linear-gradient(
+            90deg,
+            #765cff22,
+            transparent
+        );
+
+    box-shadow:
+        inset 2px 0 #806cff;
+}
+
+
+/* -------------------------
+   CONTENT
+------------------------- */
+
+.content {
+    padding: 35px;
+
+    overflow: auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 30px;
+}
+
+.title h1 {
+    margin: 0 0 5px;
+
+    font-size: 30px;
+    letter-spacing: -1px;
+}
+
+.title p {
+    margin: 0;
+
+    color: #71717a;
+}
+
+.avatar {
+    width: 42px;
+    height: 42px;
+
+    border-radius: 50%;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ff7a7a,
+            #7c5cff
+        );
+
+    border: 2px solid #ffffff22;
+}
+
+
+/* -------------------------
+   STATS
+------------------------- */
+
+.stats {
+    display: grid;
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 16px;
+
+    margin-bottom: 20px;
+}
+
+.card {
+    padding: 20px;
+
+    border-radius: 18px;
+
+    background:
+        linear-gradient(
+            145deg,
+            #ffffff0c,
+            #ffffff03
+        );
+
+    border: 1px solid #ffffff0c;
+
+    box-shadow:
+        inset 0 1px #ffffff08;
+
+    transition:
+        transform .25s,
+        border .25s,
+        background .25s;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+
+    border-color: #ffffff20;
+
+    background: #ffffff0b;
+}
+
+.card-label {
+    color: #71717a;
+    font-size: 13px;
+
+    margin-bottom: 12px;
+}
+
+.card-value {
+    font-size: 28px;
+    font-weight: 700;
+
+    letter-spacing: -1px;
+}
+
+.card-change {
+    margin-top: 8px;
+
+    font-size: 12px;
+    color: #4ade80;
+}
+
+
+/* -------------------------
+   BIG CARD
+------------------------- */
+
+.hero {
+    min-height: 280px;
+
+    position: relative;
+
+    overflow: hidden;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.hero::before {
+    content: "";
+
+    position: absolute;
+
+    width: 300px;
+    height: 300px;
+
+    right: -100px;
+    top: -120px;
+
+    background: #695cff;
+
+    filter: blur(100px);
+
+    opacity: .25;
+}
+
+.hero-content {
+    position: relative;
+}
+
+.hero h2 {
+    margin: 0 0 8px;
+
+    font-size: 22px;
+}
+
+.hero p {
+    margin: 0;
+
+    color: #71717a;
+}
+
+
+/* -------------------------
+   GRAPH
+------------------------- */
+
+.graph {
+    height: 130px;
+
+    display: flex;
+    align-items: end;
+    gap: 10px;
+}
+
+.bar {
+    flex: 1;
+
+    min-height: 20px;
+
+    border-radius:
+        7px 7px 3px 3px;
+
+    background:
+        linear-gradient(
+            to top,
+            #5c4cff,
+            #a48cff
+        );
+
+    box-shadow:
+        0 0 20px #6655ff33;
+
+    transform-origin: bottom;
+
+    animation:
+        grow .8s ease both;
+}
+
+.bar:nth-child(1) { height: 35%; }
+.bar:nth-child(2) { height: 55%; }
+.bar:nth-child(3) { height: 42%; }
+.bar:nth-child(4) { height: 70%; }
+.bar:nth-child(5) { height: 62%; }
+.bar:nth-child(6) { height: 85%; }
+.bar:nth-child(7) { height: 76%; }
+.bar:nth-child(8) { height: 95%; }
+
+@keyframes grow {
+    from {
+        transform: scaleY(0);
+    }
+
+    to {
+        transform: scaleY(1);
+    }
+}
+
+
+/* -------------------------
+   RESPONSIVE
+------------------------- */
+
+@media (max-width: 700px) {
+
+    body {
+        padding: 20px;
+    }
+
+    .app {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        display: none;
+    }
+
+    .content {
+        padding: 25px;
+    }
+
+    .stats {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+
+<div class="app">
+
+    <aside class="sidebar">
+
+        <div class="logo">
+            <div class="logo-icon">✦</div>
+            Nova
+        </div>
+
+        <nav class="nav">
+
+            <a href="#" class="active">
+                ◈
+                Dashboard
+            </a>
+
+            <a href="#">
+                ◇
+                Analytics
+            </a>
+
+            <a href="#">
+                □
+                Projects
+            </a>
+
+            <a href="#">
+                ○
+                Team
+            </a>
+
+            <a href="#">
+                ⚙
+                Settings
+            </a>
+
+        </nav>
+
+    </aside>
+
+
+    <main class="content">
+
+        <header class="header">
+
+            <div class="title">
+                <h1>Dashboard</h1>
+                <p>Welcome back, here's what's happening.</p>
+            </div>
+
+            <div class="avatar"></div>
+
+        </header>
+
+
+        <section class="stats">
+
+            <div class="card">
+
+                <div class="card-label">
+                    Total Revenue
+                </div>
+
+                <div class="card-value">
+                    $48,290
+                </div>
+
+                <div class="card-change">
+                    ↑ 12.5%
+                </div>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-label">
+                    Active Users
+                </div>
+
+                <div class="card-value">
+                    12,842
+                </div>
+
+                <div class="card-change">
+                    ↑ 8.2%
+                </div>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-label">
+                    Conversion
+                </div>
+
+                <div class="card-value">
+                    24.8%
+                </div>
+
+                <div class="card-change">
+                    ↑ 4.1%
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <section class="card hero">
+
+            <div class="hero-content">
+
+                <h2>Revenue Overview</h2>
+
+                <p>
+                    Performance during the last 30 days
+                </p>
+
+            </div>
+
+
+            <div class="graph">
+
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+

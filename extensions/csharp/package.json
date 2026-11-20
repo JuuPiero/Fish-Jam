@@ -1,0 +1,99 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "csharp",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "build:tool": "dotnet build tool/CsTranspiler/CsTranspiler.csproj -c Release -o tool/bin",
+        "bindings": "node ./scripts/gen-bindings.js",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js && node ./tests/samples.js"
+    },
+    "description": "i18n:csharp.description",
+    "main": "./dist/main.js",
+    "panels": {
+        "interop": {
+            "title": "C# TS Interop",
+            "type": "dockable",
+            "main": "dist/panels/interop.js",
+            "size": { "min-width": 300, "min-height": 260, "width": 460, "height": 420 }
+        }
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.6",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": true
+            }
+        },
+        "assets": {
+            "menu": {
+                "methods": "./dist/assets-menu.js",
+                "createMenu": "onCreateMenu",
+                "assetMenu": "onAssetMenu"
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.extension/C#",
+                "label": "i18n:csharp.menu.open_project",
+                "message": "open-project"
+            },
+            {
+                "path": "i18n:menu.extension/C#",
+                "label": "i18n:csharp.menu.recompile",
+                "message": "recompile-all"
+            },
+            {
+                "path": "i18n:menu.extension/C#",
+                "label": "i18n:csharp.menu.bindings",
+                "message": "regenerate-bindings"
+            },
+            {
+                "path": "i18n:menu.extension/C#",
+                "label": "i18n:csharp.menu.interop",
+                "message": "open-interop"
+            },
+            {
+                "path": "i18n:menu.extension/C#",
+                "label": "i18n:csharp.menu.docs",
+                "message": "open-docs"
+            }
+        ],
+        "profile": {
+            "project": {
+                "tsInterop": {
+                    "default": { "exclude": [] }
+                }
+            }
+        },
+        "messages": {
+            "open-project": { "methods": ["openProject"] },
+            "recompile-all": { "methods": ["recompileAll"] },
+            "regenerate-bindings": { "methods": ["regenerateBindings"] },
+            "open-docs": { "methods": ["openDocs"] },
+            "open-interop": { "methods": ["openInterop"] },
+            "interop-state": { "methods": ["interopState"] },
+            "interop-save": { "methods": ["interopSave"] },
+            "interop-regenerate": { "methods": ["interopRegenerate"] },
+            "open-interop-report": { "methods": ["openInteropReport"] },
+            "create-script": { "methods": ["createScript"] },
+            "create-script-at": { "methods": ["createScriptAt"] },
+            "status": { "methods": ["status"] },
+            "asset-db:asset-add": { "methods": ["onAssetAdd"] },
+            "asset-db:asset-change": { "methods": ["onAssetChange"] },
+            "asset-db:asset-delete": { "methods": ["onAssetDelete"] },
+            "asset-db:ready": { "methods": ["onDbReady"] }
+        }
+    }
+}

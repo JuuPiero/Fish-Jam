@@ -1,0 +1,14 @@
+{
+    "package_version": 2,
+    "name": "cocos-playground",
+    "version": "1.0.0",
+    "description": "Test fixture for the C# TS interop: runtime/assets/PlayGroundField.ts is a byte-identical copy of CocosGoat/extensions/cocos-playground/runtime/assets/PlayGroundField.ts (tests/samples.js checks it). Not a real extension.",
+    "contributions": {
+        "asset-db": {
+            "mount": {
+                "path": "./runtime/assets",
+                "readonly": true
+            }
+        }
+    }
+}

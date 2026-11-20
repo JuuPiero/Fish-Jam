@@ -1,0 +1,80 @@
+{
+    "$schema": "./@types/schema/package/index.json",
+    "package_version": 2,
+    "name": "line-renderer",
+    "version": "1.0.0",
+    "author": "Thanh Hoang",
+    "editor": ">=3.8.6",
+    "scripts": {
+        "preinstall": "node ./scripts/preinstall.js",
+        "build": "tsc && node ./scripts/build.js",
+        "watch": "node ./scripts/build.js --watch",
+        "typecheck": "tsc",
+        "test": "node ./tests/run.js",
+        "preview": "node ./tests/preview/build.js"
+    },
+    "description": "i18n:line-renderer.description",
+    "main": "./dist/main.js",
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.7",
+        "@types/node": "^18.17.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.8.2"
+    },
+    "contributions": {
+        "scene": {
+            "script": "./dist/scene.js"
+        },
+        "asset-db": {
+            "mount": {
+                "path": "./assets",
+                "readonly": false
+            }
+        },
+        "inspector": {
+            "section": {
+                "node": {
+                    "LineRenderer": "./dist/inspector/line-renderer.js"
+                }
+            }
+        },
+        "menu": [
+            {
+                "path": "i18n:menu.node/i18n:scene.menu.newEffects",
+                "label": "i18n:line-renderer.menu.line",
+                "message": "create-line",
+                "params": ["line"]
+            },
+            {
+                "path": "i18n:menu.node/i18n:scene.menu.newEffects",
+                "label": "i18n:line-renderer.menu.draw",
+                "message": "create-line",
+                "params": ["draw"]
+            },
+            {
+                "path": "i18n:menu.extension/Line Renderer",
+                "label": "i18n:line-renderer.menu.diagnostics",
+                "message": "save-diagnostics"
+            }
+        ],
+        "messages": {
+            "create-line": {
+                "methods": ["createLine"]
+            },
+            "save-diagnostics": {
+                "methods": ["saveDiagnostics"]
+            },
+            "scene:ready": {
+                "methods": ["onSceneReady"]
+            }
+        },
+        "profile": {
+            "editor": {
+                "settings": {
+                    "default": {},
+                    "label": "Line Renderer scene tool settings"
+                }
+            }
+        }
+    }
+}

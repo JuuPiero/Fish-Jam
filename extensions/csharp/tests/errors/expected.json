@@ -1,0 +1,7 @@
+{
+    "Unsupported.cs": ["CSX1004", "CSX1011", "CSX1001", "CSX1040", "CSX0010"],
+    "Dup1.cs": ["CSX0020"],
+    "Dup2.cs": ["CSX0020"],
+    "Warnings.cs": ["CSX2006", "CSX2009", "CSX2007"],
+    "Messages.cs": ["CSX2010", "CSX2012", "CSX1001"]
+}
